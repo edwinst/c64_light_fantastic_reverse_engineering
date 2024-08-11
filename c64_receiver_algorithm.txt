@@ -1,0 +1,9 @@
+
+
+read 2 bytes
+    both zero? if so, then quit
+read 2 bytes (any values)
+read 1..n zero-terminated bytes (including the zero byte)
+repeat
+
+

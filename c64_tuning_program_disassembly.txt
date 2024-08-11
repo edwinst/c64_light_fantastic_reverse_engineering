@@ -1,0 +1,105 @@
+$C000  A9 00     LDA #$00
+$C002  8D 03 DD  STA $DD03      ; Port B data direction <- all bits are input 
+$C005  A9 00     LDA #$00
+$C007  8D 20 D0  STA $D020      ; border color <- black
+$C00A  8D 21 D0  STA $D021      ; background color <- black
+$C00D  A9 93     LDA #$93
+$C00F  20 D2 FF  JSR $FFD2      ; output character 0x93 (clear screen)
+$C012  A9 05     LDA #$05
+$C014  20 D2 FF  JSR $FFD2      ; output character 0x05 (change text color to white)
+$C017  AE 7E C0  LDX $C07E      ; load pointer to string: Y:X <- $C080
+$C01A  AC 7F C0  LDY $C07F 
+$C01D  20 67 C0  JSR L_JSR_($C067)_($C01D) OK    ; print string
+$C020  A2 24     LDX #$24       ; X <- 36
+$C022  A0 16     LDY #$16       ; Y <- 22
+$C024  20 5C C0  JSR L_JSR_($C05C)_($C024) OK    ; set cursor position to (36,22)
+$C027  A9 71     LDA #$71       ; A <- 113
+$C029  20 D2 FF  JSR $FFD2      ; output character 0x71 (the white rounded square)
+
+
+//------------------------------                  ; the main loop starts here
+L_BRS_($C02C)_($C041) OK
+L_JMP_($C02C)_($C053) OK
+//------------------------------
+$C02C  AD 01 DD  LDA $DD01                        ; read CIA port B
+$C02F  0A        ASL A                            ; shift left A (this shifts bit PB7 into the carry flag)
+$C030  B0 0C     BCS L_BRS_($C03E)_($C030) OK     ; if PB7 was '1' -> $C03E (check keyboard and loop)
+$C032  A2 05     LDX #$05                         ; PB7 was '0', so put a '*' between "->" and "<-"
+$C034  A0 03     LDY #$03
+$C036  20 5C C0  JSR L_JSR_($C05C)_($C036) OK     ; set cursor position to (5,3), between "->" and "<-"
+$C039  A9 2A     LDA #$2A                         ; A <- '*'
+$C03B  20 D2 FF  JSR $FFD2                        ; output character
+//------------------------------
+L_BRS_($C03E)_($C030) OK
+//------------------------------
+$C03E  20 E4 FF  JSR $FFE4                        ; get one byte from the input device (the keyboard)
+$C041  F0 E9     BEQ L_BRS_($C02C)_($C041) OK     ; if the byte is zero (no key pressed) -> loop to $C02C
+$C043  C9 03     CMP #$03                         ; a key has been pressed. was it RUN/STOP
+$C045  F0 0F     BEQ L_BRS_($C056)_($C045) OK     ; if it was RUN/STOP, jump to $C056 (clear screen and return)
+$C047  A2 05     LDX #$05
+$C049  A0 03     LDY #$03
+$C04B  20 5C C0  JSR L_JSR_($C05C)_($C04B) OK     ; set cursor position to (5,3)
+$C04E  A9 20     LDA #$20                        
+$C050  20 D2 FF  JSR $FFD2                        ; print a space " " to remove the "*"
+$C053  4C 2C C0  JMP L_JMP_($C02C)_($C053) OK     ; loop
+
+
+//------------------------------ ;========== clear screen and exit program
+L_BRS_($C056)_($C045) OK
+//------------------------------
+$C056  A9 93     LDA #$93                          ; A <- $93
+$C058  20 D2 FF  JSR $FFD2                         ; print character ($93 = clear screen and go to home position)
+$C05B  60        RTS                               ; return
+//------------------------------
+
+
+
+L_JSR_($C05C)_($C024) OK ; ========= set cursor position to (X,Y)
+L_JSR_($C05C)_($C036) OK
+L_JSR_($C05C)_($C04B) OK
+//------------------------------    ; the following sequence swaps X <-> Y (because KERNAL $FFF0 uses Y for column and X for row)
+$C05C  98        TYA                ; A <- Y
+$C05D  48        PHA                ; push A to stack (saving value of Y)
+$C05E  8A        TXA                ; A <- X
+$C05F  A8        TAY                ; Y <- A (value of X)
+$C060  68        PLA                ; pop old value of Y
+$C061  AA        TAX                ; X <- A (old value of Y)
+
+$C062  18        CLC                ; clear carry (means set the cursor position, not read it)
+$C063  20 F0 FF  JSR $FFF0          ; set cursor position to (Y,X)
+$C066  60        RTS                ; return
+
+
+//------------------------------    ; ====== subroutine: print string
+L_JSR_($C067)_($C01D) OK            
+                                    ; input: pointer to string in Y:X
+//------------------------------
+$C067  86 FB     STX $FB            ; store X register in zeropage[$FB]
+$C069  84 FC     STY $FC            ; store Y register in zeropage[$FC]
+//------------------------------
+L_BRS_($C06B)_($C076) OK
+L_JMP_($C06B)_($C07A) OK
+//------------------------------
+$C06B  A0 00     LDY #$00           ; Y <- 0
+$C06D  B1 FB     LDA ($FB),Y        ; A <- byte at zeropage[$FC]:zeropage[$FB]
+$C06F  F0 0C     BEQ L_BRS_($C07D)_($C06F) OK   ; if A is zero, we are done, jump to RTS
+$C071  20 D2 FF  JSR $FFD2          ; output character (byte in register A)
+$C074  E6 FB     INC $FB            ; increment lower byte of pointer
+$C076  D0 F3     BNE L_BRS_($C06B)_($C076) OK     ; loop -> $C06B if not zero
+$C078  E6 FC     INC $FC            ; increment higher byte of pointer
+$C07A  4C 6B C0  JMP L_JMP_($C06B)_($C07A) OK    ; loop -> $C06B
+//------------------------------
+L_BRS_($C07D)_($C06F) OK
+//------------------------------
+$C07D  60        RTS 
+//------------------------------
+
+$C07E  WORD     $C080   ; pointer to string
+$c080  STRING   "\r"                                            ; row 0
+                "ADJUST RESISTANCE UNTIL "*" DISAPPEARS\r"      ; row 1
+                "\r"                                            ; row 2
+                "  ->   <-\r"                                   ; row 3
+                "\r"
+                "TO RESET READING PRESS ANY KEY.\r"
+                "\r"
+                "PRESS <RUN/STOP> TO EXIT PROGRAM.",0
