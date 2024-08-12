@@ -37,6 +37,11 @@ gmx dot net.
 Bytes are transmitted as 9 bits (a fixed '0' start bit and then 8 data bits).
 After each byte there is a little gap that could be interpreted as "don't care" stop bit(s).
 
+Bits are sent LSB first. (Each bit, after having been received, is rotated into the 'A' register using ROR,
+which means bits enter the MSB of A and then move down to the right. So the first bit received this way
+ends up in the LSB of 'A' when all bits of the byte have been received. The start bit is shifted out
+of 'A' when the last data bit is shifted in.)
+
 The overall protocol for receiving bytes seems to work like this:
 
     - read 2 bytes; if both are zero, then quit
