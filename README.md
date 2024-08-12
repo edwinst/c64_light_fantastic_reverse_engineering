@@ -83,11 +83,14 @@ However, the protocol for determining when the transmission is over is different
 
 The BBC protocol seems to work like this:
 
-- read the first byte
+- read the first byte (the leading #$0D of the first tokenized line?)
 - main loop:
-    - read a byte
+    - read a byte (this should be the high byte of a tokenized line number)
     - if the byte has bit 7 set, then quit
-    - read a byte
+    - read a byte (this should be the low byte of a tokenized line number)
     - read a sequence of 1..n bytes, terminated by #$0D (carriage return; which is also stored)
     - repeat main loop
+
+This protocol looks like it is meant to read a tokenized BASIC program. Each line starts with a #$0D character,
+followed by two bytes for the line number. If the line number is >= 32768 unsigned ($8000), the receiver stops.
 
