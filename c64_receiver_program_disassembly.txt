@@ -1,0 +1,108 @@
+$C000  A5 2B     LDA $2B 
+$C002  85 FC     STA $FC              ; zeropage[$FC] <- $2B    ??? not used
+$C004  A5 2C     LDA $2C 
+$C006  85 FD     STA $FD              ; zeropage[$FD] <- $2C    ??? not used
+
+$C008  A9 00     LDA #$00
+$C00A  8D 03 DD  STA $DD03            ; Port B data direction <- all bits are input 
+
+//------------------------------      ; === section: wait for keypress
+L_BRS_($C00D)_($C012) OK
+//------------------------------
+$C00D  20 E4 FF  JSR $FFE4            ; read byte from input device (keyboard)
+$C010  C9 00     CMP #$00             ; key pressed ?
+$C012  F0 F9     BEQ L_BRS_($C00D)_($C012) OK      ; no key pressed -> loop
+
+; key has been pressed, so let's go ....
+
+//------------------------------                    ; ===== main data reading protocol loop
+L_JMP_($C014)_($C040) OK
+//------------------------------
+$C014  20 4D C0  JSR L_JSR_($C04D)_($C014) OK       ; read one byte
+$C017  20 75 C0  JSR L_JSR_($C075)_($C017) JAM
+$C01A  85 FE     STA $FE                            ; store read byte in zeropage[$FE]
+$C01C  20 4D C0  JSR L_JSR_($C04D)_($C01C) OK       ; read one byte
+$C01F  20 75 C0  JSR L_JSR_($C075)_($C01F) JAM
+$C022  C9 00     CMP #$00                           ; have we read a zero byte?
+$C024  D0 04     BNE L_BRS_($C02A)_($C024) OK       ; non-zero, skip to $C024
+$C026  A5 FE     LDA $FE                            ; A <- zeropage[$FE] 
+$C028  F0 19     BEQ L_BRS_($C043)_($C028) OK       ; if zeropage[$FE] is zero, exit program
+//------------------------------
+L_BRS_($C02A)_($C024) OK
+//------------------------------
+$C02A  20 4D C0  JSR L_JSR_($C04D)_($C02A) OK       ; read one byte
+$C02D  20 75 C0  JSR L_JSR_($C075)_($C02D) JAM
+$C030  20 4D C0  JSR L_JSR_($C04D)_($C030) OK       ; read one byte
+$C033  20 75 C0  JSR L_JSR_($C075)_($C033) JAM
+
+//------------------------------                    ; === byte reading loop (reads a sequence of bytes terminated by a zero byte)
+L_BRS_($C036)_($C03E) OK
+//------------------------------
+$C036  20 4D C0  JSR L_JSR_($C04D)_($C036) OK       ; read one byte
+$C039  20 75 C0  JSR L_JSR_($C075)_($C039) JAM
+$C03C  C9 00     CMP #$00
+$C03E  D0 F6     BNE L_BRS_($C036)_($C03E) OK       ; if not equal to zero, repeat loop -> $C036
+$C040  4C 14 C0  JMP L_JMP_($C014)_($C040) OK       ; --> repeat main protocol loop
+
+
+//------------------------------
+L_BRS_($C043)_($C028) OK
+//------------------------------
+$C043  60        RTS                             ; exit program
+
+//------------------------------                 ; === outer delay loop (counting down X)
+L_BRS_($C044)_($C04A) OK
+L_JSR_($C044)_($C05A) OK
+L_JSR_($C044)_($C068) OK
+L_JSR_($C044)_($C071) OK
+//------------------------------
+$C044  A0 7C     LDY #$7C
+//------------------------------
+L_BRS_($C046)_($C047) OK                         ; === inner delay loop (counting down Y from 124 to 0)
+//------------------------------
+$C046  88        DEY                             ; decrease Y
+$C047  D0 FD     BNE L_BRS_($C046)_($C047) OK    ; if Y is non-zero, loop -> $C046
+$C049  CA        DEX                             ; decrease X
+$C04A  D0 F8     BNE L_BRS_($C044)_($C04A) OK    ; if X is non-zero, loop -> $C044
+$C04C  60        RTS                             ; return
+
+
+
+//------------------------------                    ; ====== read one byte
+L_JSR_($C04D)_($C014) OK
+L_JSR_($C04D)_($C01C) OK
+L_JSR_($C04D)_($C02A) OK
+L_JSR_($C04D)_($C030) OK
+L_JSR_($C04D)_($C036) OK
+//------------------------------
+$C04D  A9 09     LDA #$09
+$C04F  85 FB     STA $FB                            ; loop counter zeropage[$FB] <- 9 (repeat bit-loop 9 times)
+                                                      (9 = 1 start bit + 8 data bits)
+//------------------------------
+L_BRS_($C051)_($C056) OK
+//------------------------------                    ; first we wait until we see PB7 becoming '1' (start bit)
+$C051  AD 01 DD  LDA $DD01                          ; read port B bits 
+$C054  29 80     AND #$80
+$C056  D0 F9     BNE L_BRS_($C051)_($C056) OK       ; if PB7 is '1' --> loop to $C051
+
+$C058  A2 0F     LDX #$0F
+$C05A  20 44 C0  JSR L_JSR_($C044)_($C05A) OK       ; delay 15 * 124 (half a bit time)
+$C05D  A9 00     LDA #$00                           ; A <- 0 (clear A, we will use it to accumulate bits)
+
+//------------------------------                    ; === bit reading loop
+L_BRS_($C05F)_($C06D) OK
+//------------------------------
+$C05F  48        PHA                                ; save A
+$C060  AD 01 DD  LDA $DD01                          ; read port B bits
+$C063  0A        ASL A                              ; shift PB7 into carry flag
+$C064  68        PLA                                ; restore A
+$C065  6A        ROR A                              ; rotate A right, shifting the carry flag into bit 7 of A
+$C066  A2 1E     LDX #$1E
+$C068  20 44 C0  JSR L_JSR_($C044)_($C068) OK       ; delay 30 * 124
+
+$C06B  C6 FB     DEC $FB                            ; decrease zeropage[$FB]
+$C06D  D0 F0     BNE L_BRS_($C05F)_($C06D) OK       ; if non-zero -> repeat loop $C05F
+$C06F  A2 1E     LDX #$1E
+$C071  20 44 C0  JSR L_JSR_($C044)_($C071) OK       ; delay 30 * 124
+$C074  60        RTS                                ; return
+
