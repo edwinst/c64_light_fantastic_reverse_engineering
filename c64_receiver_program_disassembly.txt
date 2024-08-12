@@ -1,7 +1,7 @@
-$C000  A5 2B     LDA $2B 
-$C002  85 FC     STA $FC              ; zeropage[$FC] <- $2B    ??? not used
+$C000  A5 2B     LDA $2B              ; set up data pointer: zeropage[$FD]:zeropage[$FC] = beginning of BASIC area (zeropage[$2C]:zeropage[$2B])
+$C002  85 FC     STA $FC
 $C004  A5 2C     LDA $2C 
-$C006  85 FD     STA $FD              ; zeropage[$FD] <- $2C    ??? not used
+$C006  85 FD     STA $FD
 
 $C008  A9 00     LDA #$00
 $C00A  8D 03 DD  STA $DD03            ; Port B data direction <- all bits are input 
@@ -110,3 +110,6 @@ $C06F  A2 1E     LDX #$1E
 $C071  20 44 C0  JSR L_JSR_($C044)_($C071) OK       ; delay 30 * 124 iterations = 18733 cycles
 $C074  60        RTS                                ; return
 
+
+
+$C075 ... here should be the missing code for storing received bytes
