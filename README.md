@@ -4,13 +4,11 @@ Here are my notes for my ongoing reverse-engineering of the C64 programs for the
 
 # Summary
 
-First, the summary comment I made under Perifractic's video:
-
 I've disassembled the tuning and receiver programs for C64. Strangely, the
 receiver program looks incomplete. Here's how it basically works:
 
 HW: The multivibrator is used to lengthen the pulses read by the
-phototransistor in order to bridge the gap between TV frames. The tuning
+phototransistor in order to bridge the gap between TV fields (50 Hz "half-frames). The tuning
 procedure tells you to adjust the timing of the circuit such that the
 lengthening of the pulses is just enough so the user port signal (PB7) never
 goes to LOW if a bright square is displayed under the sensor.
@@ -23,14 +21,17 @@ it means PB7 is reading HIGH each time it is sampled.
 Receiver program: It first waits for a keypress. Then it waits for the bright
 square to *dis*appear (i.e. the first start bit). Each byte is transmitted as a '0'
 start bit and then 8 data bits with hard-coded timing. Then there is a short
-gap. The program then synchronizes again to the start bit of the next byte. All
+gap (stop bit(s)). The program then synchronizes again to the start bit of the next byte. All
 the timing and reading loops are there, but strangely, my disassembly seems to
 be missing the part that actually stores the transmitted data in memory.
 
-Above the byte level there is some kind of protocol for transmitting
-zero-terminated byte sequences. I do not yet understand that part due to the
-missing (?) code. For more info, contact me using edwin dot steiner at
-gmx dot net.
+The receiver is designed to read a tokenized BASIC program into memory. For the C64,
+it reads tokenized BASIC lines until a $0000 in the first two bytes of a tokenized
+line signals the end of the program.
+
+# Contact
+
+For more info, contact me using edwin dot steiner at gmx dot net.
 
 # Protocol
 
@@ -46,12 +47,12 @@ which means bits enter the MSB of A and then move down to the right. So the firs
 ends up in the LSB of 'A' when all bits of the byte have been received. The start bit is shifted out
 of 'A' when the last data bit is shifted in.)
 
-The overall protocol for receiving bytes seems to work like this:
+The overall protocol for receiving bytes seems to work like this (it is meant to read a tokenized BASIC program):
 
 - main loop:
-    - read 2 bytes; if both are zero, then quit
-    - read 2 bytes (any values)
-    - read 1..n zero-terminated bytes (including the zero byte)
+    - read 2 bytes (start address of next BASIC line); if both are zero (end of program), then quit
+    - read 2 bytes (the tokenized line number, any values)
+    - read 1..n zero-terminated bytes (including the zero byte) (this reads one tokenized BASIC line)
     - repeat main loop
 
 # Bit timing
@@ -79,11 +80,11 @@ before this address!
 The receiver program for the BBC Micro is very similar to the one for C64 but it looks complete.
 In particular, it does include the subroutine for storing the received bytes.
 
-However, the protocol for determining when the transmission is over is different in the BBC receiver.
+However, the protocol for determining when the transmission is over is different in the BBC receiver, due to the different format of tokenized BASIC lines on the BBC Micro.
 
 The BBC protocol seems to work like this:
 
-- read the first byte (the leading #$0D of the first tokenized line?)
+- read the first byte (the leading #$0D of the first tokenized line)
 - main loop:
     - read a byte (this should be the high byte of a tokenized line number)
     - if the byte has bit 7 set, then quit
@@ -91,6 +92,6 @@ The BBC protocol seems to work like this:
     - read a sequence of 1..n bytes, terminated by #$0D (carriage return; which is also stored)
     - repeat main loop
 
-This protocol looks like it is meant to read a tokenized BASIC program. Each line starts with a #$0D character,
+This protocol is meant to read a tokenized BASIC program. Each line starts with a #$0D character,
 followed by two bytes for the line number. If the line number is >= 32768 unsigned ($8000), the receiver stops.
 
