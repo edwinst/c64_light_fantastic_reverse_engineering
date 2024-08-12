@@ -51,19 +51,23 @@ L_BRS_($C043)_($C028) OK
 $C043  60        RTS                             ; exit program
 
 //------------------------------                 ; === outer delay loop (counting down X)
+                                                 ; cycles: 2 + X * (619 + 2 + 3) - 1 + 6 = 7 + X * 624
+                                                 ; additional cycles for JSR to this delay routine: 6
 L_BRS_($C044)_($C04A) OK
 L_JSR_($C044)_($C05A) OK
 L_JSR_($C044)_($C068) OK
 L_JSR_($C044)_($C071) OK
 //------------------------------
-$C044  A0 7C     LDY #$7C
+$C044  A0 7C     LDY #$7C                        ;                                              2 cycles
 //------------------------------
 L_BRS_($C046)_($C047) OK                         ; === inner delay loop (counting down Y from 124 to 0)
+                                                 ; cycles: 124 * (2 + 3) - 1 = 619 cycles
 //------------------------------
-$C046  88        DEY                             ; decrease Y
-$C047  D0 FD     BNE L_BRS_($C046)_($C047) OK    ; if Y is non-zero, loop -> $C046
-$C049  CA        DEX                             ; decrease X
-$C04A  D0 F8     BNE L_BRS_($C044)_($C04A) OK    ; if X is non-zero, loop -> $C044
+$C046  88        DEY                             ; decrease Y                                   2 cycles
+$C047  D0 FD     BNE L_BRS_($C046)_($C047) OK    ; if Y is non-zero, loop -> $C046              3 cycles if taken; 2 cycles if not taken
+
+$C049  CA        DEX                             ; decrease X                                   2 cycles
+$C04A  D0 F8     BNE L_BRS_($C044)_($C04A) OK    ; if X is non-zero, loop -> $C044              3 cycles if taken; 2 cycles if not taken
 $C04C  60        RTS                             ; return
 
 
@@ -86,7 +90,7 @@ $C054  29 80     AND #$80
 $C056  D0 F9     BNE L_BRS_($C051)_($C056) OK       ; if PB7 is '1' --> loop to $C051
 
 $C058  A2 0F     LDX #$0F
-$C05A  20 44 C0  JSR L_JSR_($C044)_($C05A) OK       ; delay 15 * 124 (half a bit time)
+$C05A  20 44 C0  JSR L_JSR_($C044)_($C05A) OK       ; delay 15 * 124 iterations = 9373 cycles (half a bit time)
 $C05D  A9 00     LDA #$00                           ; A <- 0 (clear A, we will use it to accumulate bits)
 
 //------------------------------                    ; === bit reading loop
@@ -98,11 +102,11 @@ $C063  0A        ASL A                              ; shift PB7 into carry flag
 $C064  68        PLA                                ; restore A
 $C065  6A        ROR A                              ; rotate A right, shifting the carry flag into bit 7 of A
 $C066  A2 1E     LDX #$1E
-$C068  20 44 C0  JSR L_JSR_($C044)_($C068) OK       ; delay 30 * 124
+$C068  20 44 C0  JSR L_JSR_($C044)_($C068) OK       ; delay 30 * 124 iterations = 18733 cycles
 
 $C06B  C6 FB     DEC $FB                            ; decrease zeropage[$FB]
 $C06D  D0 F0     BNE L_BRS_($C05F)_($C06D) OK       ; if non-zero -> repeat loop $C05F
 $C06F  A2 1E     LDX #$1E
-$C071  20 44 C0  JSR L_JSR_($C044)_($C071) OK       ; delay 30 * 124
+$C071  20 44 C0  JSR L_JSR_($C044)_($C071) OK       ; delay 30 * 124 iterations = 18733 cycles
 $C074  60        RTS                                ; return
 

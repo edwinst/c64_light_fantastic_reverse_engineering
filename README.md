@@ -49,6 +49,19 @@ The overall protocol for receiving bytes seems to work like this:
     - read 1..n zero-terminated bytes (including the zero byte)
     - repeat
 
+# Bit timing
+
+Bit timing within a byte is hard-coded in the receiver program by running a fixed number of iterations
+of the delay loops.
+
+A very rough estimate of the bit time, not considering bad lines or time spent outside of the delay routine:
+
+On a PAL C64:
+
+30 * 124 iterations of the delay loop = 18733 cycles = 18733 / (17.734475 MHz / 18) = 18733 * 1.015 µs = about 19 ms per bit
+
+Considering some additional time spent outside of the delay code, this lines up with a bit time of ~20 ms, i.e. a bit frequency of 50 Hz, or one bit per TV frame.
+
 # Missing code
 
 In the receiver program, there are JSRs (subroutine calls) to the address $C075.
