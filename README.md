@@ -2,6 +2,8 @@
 
 Here are my notes for my ongoing reverse-engineering of the C64 programs for the "Light fantastic" experiment.
 
+See the Retro Recipes video for what this is about: https://www.youtube.com/watch?v=MezkfYTN6EQ
+
 # Summary
 
 I've disassembled the tuning and receiver programs for C64. Strangely, the
