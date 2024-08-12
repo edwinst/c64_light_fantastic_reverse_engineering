@@ -36,6 +36,10 @@ gmx dot net.
 
 Bytes are transmitted as 9 bits (a fixed '0' start bit and then 8 data bits).
 After each byte there is a little gap that could be interpreted as "don't care" stop bit(s).
+They are not sampled by the receiver program. However, the transmission must go HIGH again
+(i.e. bright square) after each byte before the receiver starts sampling again, so the receiver
+can synchronize to the next start bit (transition HIGH -> LOW, i.e. bright -> dark).
+In this sense the stop bit(s) must be '1'.
 
 Bits are sent LSB first. (Each bit, after having been received, is rotated into the 'A' register using ROR,
 which means bits enter the MSB of A and then move down to the right. So the first bit received this way
