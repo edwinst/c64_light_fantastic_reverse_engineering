@@ -48,10 +48,11 @@ of 'A' when the last data bit is shifted in.)
 
 The overall protocol for receiving bytes seems to work like this:
 
+- main loop:
     - read 2 bytes; if both are zero, then quit
     - read 2 bytes (any values)
     - read 1..n zero-terminated bytes (including the zero byte)
-    - repeat
+    - repeat main loop
 
 # Bit timing
 
@@ -79,4 +80,14 @@ The receiver program for the BBC Micro is very similar to the one for C64 but it
 In particular, it does include the subroutine for storing the received bytes.
 
 However, the protocol for determining when the transmission is over is different in the BBC receiver.
+
+The BBC protocol seems to work like this:
+
+- read the first byte
+- main loop:
+    - read a byte
+    - if the byte has bit 7 set, then quit
+    - read a byte
+    - read a sequence of 1..n bytes, terminated by #$0D (carriage return; which is also stored)
+    - repeat main loop
 
