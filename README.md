@@ -8,7 +8,7 @@ I've disassembled the tuning and receiver programs for C64. Strangely, the
 receiver program looks incomplete. Here's how it basically works:
 
 HW: The multivibrator is used to lengthen the pulses read by the
-phototransistor in order to bridge the gap between TV fields (50 Hz "half-frames). The tuning
+phototransistor in order to bridge the gap between TV fields (50 Hz "half-frames"). The tuning
 procedure tells you to adjust the timing of the circuit such that the
 lengthening of the pulses is just enough so the user port signal (PB7) never
 goes to LOW if a bright square is displayed under the sensor.
