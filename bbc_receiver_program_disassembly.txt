@@ -1,0 +1,123 @@
+$0900  A9 00     LDA #$00                            ; set the start address for the received program:
+$0902  85 71     STA $71                             ; zeropage[$72]:zeropage[$71] = zeropage[$18]:#$00
+$0904  A5 18     LDA $18 
+$0906  85 72     STA $72 
+
+$0908  A9 00     LDA #$00
+$090A  8D 62 FE  STA $FE62                           ; set data direction register B to zero
+
+$090D  20 E0 FF  JSR $FFE0                           ; call osrdch (get a byte from the keyboard, i.e. wait for a keypress)
+
+$0910  20 3D 09  JSR L_JSR_($093D)_($0910) OK        ; receive a byte
+$0913  20 65 09  JSR L_JSR_($0965)_($0913) OK        ; store received byte
+
+
+//------------------------------                     ; ===  main loop (starts with second byte, repeats after every #$0D byte)
+L_JMP_($0916)_($0930) OK
+//------------------------------
+$0916  20 3D 09  JSR L_JSR_($093D)_($0916) OK        ; receive a byte
+$0919  20 65 09  JSR L_JSR_($0965)_($0919) OK        ; store received byte
+$091C  29 80     AND #$80
+$091E  D0 13     BNE L_BRS_($0933)_($091E) OK        ; bit 7 set? if yes, exit the program
+
+$0920  20 3D 09  JSR L_JSR_($093D)_($0920) OK        ; receive a byte
+$0923  20 65 09  JSR L_JSR_($0965)_($0923) OK        ; store received byte
+
+//------------------------------                     ; === byte sequence loop
+L_BRS_($0926)_($092E) OK
+//------------------------------
+$0926  20 3D 09  JSR L_JSR_($093D)_($0926) OK        ; receive a byte
+$0929  20 65 09  JSR L_JSR_($0965)_($0929) OK        ; store received byte
+$092C  C9 0D     CMP #$0D                            ; is the received byte #$0D (CR)?
+$092E  D0 F6     BNE L_BRS_($0926)_($092E) OK        ; no, then repeat byte sequence loop -> $0926
+$0930  4C 16 09  JMP L_JMP_($0916)_($0930) OK        ; yes, then repeat main loop -> $0916
+
+
+
+
+//------------------------------
+L_BRS_($0933)_($091E) OK
+//------------------------------
+$0933  60        RTS                               ; exit the program
+
+
+
+
+//------------------------------                   ; ====== subroutine: delay, outer delay loop (decrementing X)
+                                                   ; cycles: 2 + X * (1279 + 2 + 3) - 1 + 6 = 7 + X * 1284
+                                                   ; additional cycles for JSR to this delay routine: 6
+L_BRS_($0934)_($093A) OK                             
+L_JSR_($0934)_($094A) OK
+L_JSR_($0934)_($0958) OK
+L_JSR_($0934)_($0961) OK
+//------------------------------
+$0934  A0 00     LDY #$00
+
+//------------------------------                   ; === inner delay loop (decrementing Y 256 times)
+                                                   ; cycles: 256 * (2 + 3) - 1 = 1279 cycles
+L_BRS_($0936)_($0937) OK
+//------------------------------
+$0936  88        DEY 
+$0937  D0 FD     BNE L_BRS_($0936)_($0937) OK
+
+$0939  CA        DEX 
+$093A  D0 F8     BNE L_BRS_($0934)_($093A) OK
+$093C  60        RTS 
+
+
+
+
+//------------------------------                 ; ======= subroutine: receive a byte
+L_JSR_($093D)_($0910) OK
+L_JSR_($093D)_($0916) OK
+L_JSR_($093D)_($0920) OK
+L_JSR_($093D)_($0926) OK
+//------------------------------
+$093D  A9 09     LDA #$09                        ; zeropage[$70] = bit counter = 9
+$093F  85 70     STA $70 
+//------------------------------
+L_BRS_($0941)_($0946) OK
+
+//------------------------------
+$0941  AD 60 FE  LDA $FE60                       ; read user VIA Register B
+$0944  29 80     AND #$80                        ; wait until the input (bit 7) goes to '0'
+$0946  D0 F9     BNE L_BRS_($0941)_($0946) OK
+
+
+$0948  A2 0F     LDX #$0F
+$094A  20 34 09  JSR L_JSR_($0934)_($094A) OK    ; delay 15 times = 19273 cycles = ~ 9.64 ms (half a bit time)
+
+$094D  A9 00     LDA #$00                        ; A <- 0 (reset it so it can receive the data bits)
+//------------------------------
+L_BRS_($094F)_($095D) OK
+//------------------------------
+$094F  48        PHA                              ; save A
+$0950  AD 60 FE  LDA $FE60                        ; read user VIA register B
+$0953  0A        ASL A                            ; shift bit 7 into the carry bit
+$0954  68        PLA                              ; restore A
+$0955  6A        ROR A                            ; shift the received bit into A from the left
+$0956  A2 1E     LDX #$1E                         
+$0958  20 34 09  JSR L_JSR_($0934)_($0958) OK     ; delay 30 times = 38533 cycles = ~ 19.26 ms (one bit time)
+$095B  C6 70     DEC $70                          ; decrease bit counter zeropage[$70]
+$095D  D0 F0     BNE L_BRS_($094F)_($095D) OK     ; another bit to receive, then loop -> $094F
+$095F  A2 1E     LDX #$1E                         
+$0961  20 34 09  JSR L_JSR_($0934)_($0961) OK     ; delay 30 times = 38533 cycles = ~ 19.26 ms (one bit time)
+$0964  60        RTS                              ; return
+
+
+//------------------------------ ; =========== subroutine: store a received byte
+L_JSR_($0965)_($0913) OK
+L_JSR_($0965)_($0919) OK
+L_JSR_($0965)_($0923) OK
+L_JSR_($0965)_($0929) OK
+//------------------------------
+$0965  A0 00     LDY #$00
+$0967  91 71     STA ($71),Y                     ; store byte in A to the address in pointer zeropage[$72]:zeropage[$71]
+$0969  E6 71     INC $71                         ; increment the pointer (low byte)
+$096B  D0 02     BNE L_BRS_($096F)_($096B) OK    ; if lower byte is non-zero, skip to $096F
+$096D  E6 72     INC $72                         ; increment the high byte of the pointer
+//------------------------------
+L_BRS_($096F)_($096B) OK
+//------------------------------
+$096F  60        RTS                             ; return
+//------------------------------

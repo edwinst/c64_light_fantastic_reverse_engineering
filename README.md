@@ -73,4 +73,10 @@ The code expected at that address seems to be responsible for processing the
 bytes received from the TV. However, the published C64 program ends exactly
 before this address!
 
+# Receiver program for BBC Micro
+
+The receiver program for the BBC Micro is very similar to the one for C64 but it looks complete.
+In particular, it does include the subroutine for storing the received bytes.
+
+However, the protocol for determining when the transmission is over is different in the BBC receiver.
 
