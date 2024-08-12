@@ -77,6 +77,12 @@ The code expected at that address seems to be responsible for processing the
 bytes received from the TV. However, the published C64 program ends exactly
 before this address!
 
+From context and from looking at the BBC receiver program, the missing subroutine at $C075 should do the following:
+
+- store the byte in register A into the byte pointed to by zeropage[$FD]:zeropage[$FC]
+- increment the pointer zeropage[$FD]:zeropage[$FC]
+- return, with the read byte still in register A
+
 # Receiver program for BBC Micro
 
 The receiver program for the BBC Micro is very similar to the one for C64 but it looks complete.
