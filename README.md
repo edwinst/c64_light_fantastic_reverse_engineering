@@ -21,7 +21,7 @@ clear the asterisk by pressing a key.) If the asterisk does no longer show up,
 it means PB7 is reading HIGH each time it is sampled.
 
 Receiver program: It first waits for a keypress. Then it waits for the bright
-square to appear (i.e. the first start bit). Each byte is transmitted as a '1'
+square to *dis*appear (i.e. the first start bit). Each byte is transmitted as a '0'
 start bit and then 8 data bits with hard-coded timing. Then there is a short
 gap. The program then synchronizes again to the start bit of the next byte. All
 the timing and reading loops are there, but strangely, my disassembly seems to
@@ -34,7 +34,7 @@ gmx dot net.
 
 # Protocol
 
-Bytes are transmitted as 9 bits (a fixed '1' start bit and then 8 data bits).
+Bytes are transmitted as 9 bits (a fixed '0' start bit and then 8 data bits).
 After each byte there is a little gap that could be interpreted as "don't care" stop bit(s).
 
 The overall protocol for receiving bytes seems to work like this:

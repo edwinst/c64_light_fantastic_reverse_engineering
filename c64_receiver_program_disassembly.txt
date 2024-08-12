@@ -80,7 +80,7 @@ $C04F  85 FB     STA $FB                            ; loop counter zeropage[$FB]
                                                       (9 = 1 start bit + 8 data bits)
 //------------------------------
 L_BRS_($C051)_($C056) OK
-//------------------------------                    ; first we wait until we see PB7 becoming '1' (start bit)
+//------------------------------                    ; first we wait until we see PB7 becoming '0' (start bit)
 $C051  AD 01 DD  LDA $DD01                          ; read port B bits 
 $C054  29 80     AND #$80
 $C056  D0 F9     BNE L_BRS_($C051)_($C056) OK       ; if PB7 is '1' --> loop to $C051
