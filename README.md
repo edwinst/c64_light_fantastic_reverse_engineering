@@ -145,7 +145,7 @@ followed by two bytes for the line number. If the line number is >= 32768 unsign
 
 # Credits
 
-I learned about this fascinating story through Perifractic's wonderful YouTube recipode (see link in the intro).
+I learned about this fascinating story through Perifractic's wonderful YouTube recipode (https://www.youtube.com/watch?v=MezkfYTN6EQ).
 
 For disassembling, I used "Infiltrator Disassembler" by Gerald Hinder (https://csdb.dk/release/?id=100129).
 
