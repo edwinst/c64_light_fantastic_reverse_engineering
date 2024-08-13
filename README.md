@@ -102,8 +102,10 @@ where
     1         denotes 20 ms of a field with a bright dot
     0         denotes 20 ms of a field with darkness
     ...111    denotes the continuously bright dot before the transmission of the first byte
-    *         denotes an unknown bit value in the first transmitted byte
+    *         denotes 20 ms of an unknown bit value in the first transmitted byte
     ( )       parentheses mark start and stop bits
+
+    Note: Spaces are just for readability.
 
 Using a video player with the capability to step through the fields of an interlaced video,
 it should therefore be possible to check whether the expected signal is present.
