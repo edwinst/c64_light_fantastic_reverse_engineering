@@ -2,7 +2,13 @@
 
 Here are my notes for my ongoing reverse-engineering of the C64 programs for the "Light fantastic" experiment.
 
-See the Retro Recipes video for what this is about: https://www.youtube.com/watch?v=MezkfYTN6EQ
+"Light fantastic" was a broadcasting experiment in the 1985 British TV show "4 Computer Buffs" during which
+programs for home computers were transmitted as part of the TV signal, encoded in a blinking dot on the screen.
+
+Further information about the experiment and attempts at reproducing it can be found in the following:
+
+- Aug 10, 2024 Retro Recipes video "Receiving A Program From The Past " on YouTube: https://www.youtube.com/watch?v=MezkfYTN6EQ
+- A thread on lemon64: https://www.lemon64.com/forum/viewtopic.php?p=1027686
 
 # Summary
 
@@ -69,6 +75,38 @@ On a PAL C64:
 30 * 124 iterations of the delay loop = 18733 cycles = 18733 / (17.734475 MHz / 18) = 18733 * 1.015 µs = about 19 ms per bit
 
 Considering some additional time spent outside of the delay code, this lines up with a bit time of ~20 ms, i.e. a bit frequency of 50 Hz, or one bit per TV field.
+
+# Expected signal for the C64 program
+
+Since the transmitted program is a tokenized BASIC program that will be placed at the default location
+for BASIC programs on the C64 (starting at memory address $0801) and the first two bytes contain the address of the
+next BASIC line (i.e. of the second line of the program), we can expect the following:
+
+If the first line of the program uses strictly less than the maximum of 255 bytes (which is very likely), then
+the second line will start at an address of the form $08xx, therefore the second byte of the transmission is
+expected to be $08.
+
+$08 is transmitted as (LSB first) 0001 0000. Including a start bit (0) and one or two stop bits (1), one of the following
+patterns is expected at the start of the transmission:
+
+For one stop bit per byte:
+
+    ...111 (0) **** **** (10) 0001 0000 (1)
+
+For two stop bits per byte:
+
+    ...111 (0) **** **** (110) 0001 0000 (11)
+
+where
+
+    1         denotes 20 ms of a field with a bright dot
+    0         denotes 20 ms of a field with darkness
+    ...111    denotes the continuously bright dot before the transmission of the first byte
+    *         denotes an unknown bit value in the first transmitted byte
+    ( )       parentheses mark start and stop bits
+
+Using a video player with the capability to step through the fields of an interlaced video,
+it should therefore be possible to check whether the expected signal is present.
 
 # Missing code
 
