@@ -143,3 +143,9 @@ The BBC protocol seems to work like this:
 This protocol is meant to read a tokenized BASIC program. Each line starts with a #$0D character,
 followed by two bytes for the line number. If the line number is >= 32768 unsigned ($8000), the receiver stops.
 
+# Credits
+
+I learned about this fascinating story through Perifractic's wonderful YouTube recipode (see link in the intro).
+
+For disassembling, I used "Infiltrator Disassembler" by Gerald Hinder (https://csdb.dk/release/?id=100129).
+
