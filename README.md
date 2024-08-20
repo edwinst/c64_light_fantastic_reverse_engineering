@@ -123,6 +123,20 @@ From context and from looking at the BBC receiver program, the missing subroutin
 - increment the pointer zeropage[$FD]:zeropage[$FC]
 - return, with the read byte still in register A
 
+# Example of completed receiver program by nc513
+
+For an example of a complete receiver program for the C64, see the file `C000_C64REC_nc513.prg`. This program was posted
+to the lemon64 thread by user nc513 on Aug 8, 2024, independent from my reverse engineering. It contains the following
+additions to the originally published C64 receiver program:
+
+- (at $C07D) the subroutine for storing the received byte and incrementing the running pointer (zeropage[$FD]:zeropage[$FC]),
+- (at $C043) after having received the end of the transmission and before exiting, the program sets the `VARTAB` pointer (zeropage[$2E]:zeropage[$$2D]) to the first byte beyond the received program code.
+
+See `c64_receiver_program_by_nc513_disassembly.txt` for an (uncommented) disassembly of this program.
+
+Note: I am not sure whether setting `VARTAB` suffices for establishing a valid BASIC interpreter state after
+downloading the transmitted program.
+
 # Receiver program for BBC Micro
 
 The receiver program for the BBC Micro is very similar to the one for C64 but it looks complete.
@@ -146,6 +160,8 @@ followed by two bytes for the line number. If the line number is >= 32768 unsign
 # Credits
 
 I learned about this fascinating story through Perifractic's wonderful YouTube recipode (https://www.youtube.com/watch?v=MezkfYTN6EQ).
+
+The program `C000_C64REC_nc513.prg` was independently assembled and uploaded to lemon64 by user nc513. See the thread https://www.lemon64.com/forum/viewtopic.php?p=1027686 on Aug 8, 2024.
 
 For disassembling, I used "Infiltrator Disassembler" by Gerald Hinder (https://csdb.dk/release/?id=100129).
 
