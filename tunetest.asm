@@ -1,12 +1,44 @@
            * = $C000
             
-           xpos = 36
+           ; --- position of the dot ------------------
+
+           xpos = 32
            ypos = 22
            screen = $0400
            screenpos = screen + (40 * ypos) + xpos
            colorram = $D800
            colorpos = colorram + (40 * ypos) + xpos
+
+           ; --- raster lines -------------------------
+
+           ; 10 ms are 156.25 raster lines
+           ; 20 ms are 312.50 raster lines
+           ;
+           ; With ypos = 22, the dot starts on raster line
+           ; 227. Raster line 71 is about 10 ms before that.
+
+           rasterStartVisible = 51
+
+           rasterFrame        = 0     ; when to do the top-of-the-frame update
+           rasterSample       = 71    ; when to sample the data line
+           rasterDot          = rasterStartVisible + (8 * ypos)
+
+           rasterTarget       = (rasterDot + 10)
+           rasterBarStart     = (rasterTarget - 14)
+           rasterBarEnd       = (rasterTarget + 14)
+
+           ; --- other screen positions ---------------
+
+           yFirstSequence = 9
+           xSequenceMarker = 2
+
+           screenposFirstSequenceMarker = screen + (40 * yFirstSequence) + xSequenceMarker
             
+           yData = 16
+
+           screenposDataStart = screen + (40 * yData)
+           screenposDataEnd   = screenposDataStart + (3 * 40)
+
            ; --- control characters -------------------
 
            ctrlWhite      = $05
@@ -15,90 +47,194 @@
            ctrlReverseOn  = $12
            ctrlHome       = $13
            ctrlRed        = $1C
+           ctrlGreen      = $1E
+           ctrlBlue       = $1F
+           ctrlOrange     = $81
+           ctrlBlack      = $90
            ctrlReverseOff = $92
            ctrlClear      = $93
+           ctrlBrown      = $95
+           ctrlLightRed   = $96
+           ctrlDarkGrey   = $97
+           ctrlMediumGrey = $98
+           ctrlLightGreen = $99
+           ctrlLightBlue  = $9A
+           ctrlLightGrey  = $9B
+           ctrlPurple     = $9C
+           ctrlYellow     = $9E
+           ctrlCyan       = $9F
+
+           ; --- poke colors --------------------------
+
+           pokeBlack      = $00
+           pokeBlue       = $06
+           pokeYellow     = $07
+           pokeDarkGrey   = $0C
+
+           ; --- key codes ----------------------------
+
+           keyRunStop     = $03
+           keyF5          = $87
+           keyF7          = $88
            
            ; --- kernal vectors -----------------------
            
-           outch = $FFD2
-           readkey = $FFE4
+           outch          = $FFD2
+           readkey        = $FFE4
+           kernalIrq      = $EA31 ; standard IRQ handler
+           kernalIrqRet   = $EA81 ; return from IRQ
 
            ; --- zeropage allocations for variables ---
            
            zpCurrentByte       = $02
+           zpMainLo            = $0B ; for use by the main program
+           zpMainHi            = $0C ; for use by the main program
+           zpSampleLo          = $14 ; running pointer for sampling IRQ
+           zpSampleHi          = $15 ; running pointer for sampling IRQ
            zpAvailableBits     = $FB
            zpSequenceIndex     = $FC
-           zpTempLo            = $FC
+           zpTempLo            = $FC ; use only during initialization
            zpNextBytePointerLo = $FD
-           zpTempHi            = $FD
+           zpTempHi            = $FD ; use only during initialization
            zpNextBytePointerHi = $FE
            zpRemainingBitsLo   = $43
            zpRemainingBitsHi   = $44
 
+           ; --- interrupt vectors --------------------
+
+           vecIrq              = $0314
+
+           ; --- VIC registers ------------------------
+
+           vicControl          = $D011
+           vicRaster           = $D012
+           vicIrqFlag          = $D019
+           vicIrqMask          = $D01A
+           vicBorder           = $D020
+           vicBackground       = $D021
+
+           ; --- CIA registers ------------------------
+
+           ciaIntCtrl1         = $DC0D ; interrupt control
+
+           ciaDataB2           = $DD01 ; data, port B
+           ciaDataDirB2        = $DD03 ; data direction, port B
+           ciaIntCtrl2         = $DD0D ; interrupt control
+
            ; --- initialize the program ---
            
 Init       LDA #0
-           STA $D020            ; border color: black
-           STA $D021            ; background color: black
+           STA vicBorder        ; border color: black
+           STA vicBackground    ; background color: black
+           STA ciaDataDirB2     ; all port B bits are inputs
          
-           LDA #ctrlClear
+           LDA #ctrlClear       ; clear the screen
            JSR outch
 
-           LDX #<Usage
+           LDX #<Usage          ; print the usage message
            LDY #>Usage
            JSR PrintStr
+
+           LDA #<screenposDataStart  ; set up screen pointer for sampling
+           STA zpSampleLo
+           LDA #>screenposDataStart
+           STA zpSampleHi
 
            LDA #0               ; start sequence 0
            STA zpSequenceIndex
            JSR StartSeq
            
            SEI                  ; set interrupt bit, make the CPU ignore interrupt requests
+
            LDA #%01111111       ; switch off interrupt signals from CIA-1
-           STA $DC0D
+           STA ciaIntCtrl1
 
-           AND $D011            ; clear most significant bit of VIC's raster register
-           STA $D011
+           AND vicControl       ; clear most significant bit of VIC's raster register
+           STA vicControl
 
-           STA $DC0D            ; acknowledge pending interrupts from CIA-1
-           STA $DD0D            ; acknowledge pending interrupts from CIA-2
+           STA ciaIntCtrl1      ; acknowledge pending interrupts from CIA-1
+           STA ciaIntCtrl2      ; acknowledge pending interrupts from CIA-2
 
-           LDA #100             ; set rasterline where interrupt shall occur
-           STA $D012
+           LDA #rasterFrame     ; set rasterline where interrupt shall occur
+           STA vicRaster
 
            LDA #<Irq            ; set interrupt vectors, pointing to interrupt service routine below
-           STA $0314
+           STA vecIrq
            LDA #>Irq
-           STA $0315
+           STA vecIrq + 1
 
            LDA #%00000001       ; enable raster interrupt signals from VIC
-           STA $D01A
+           STA vicIrqMask
 
-           CLI                  ; clear interrupt flag, allowing the CPU to respond to interrupt requests
+           JMP HaveSeq          ; start the first sequence and enable interrupts
 
            ; --- main loop ---
-MainLoop   JSR readkey
-           BEQ MainLoop
 
-           CMP #$03             ; has RUN/STOP been pressed?
+MainLoop   JSR readkey
+           BEQ MainLoop         ; no key? -> repeat
+
+           CMP #keyRunStop      ; has RUN/STOP been pressed?
            BEQ Exit             ; if yes, then exit
 
-           ; switch to the next sequence
-           SEI                  ; suspend interrupts
-           INC zpSequenceIndex
-           JSR StartSeq
-           ; check if we have reached the end of the sequence list
-           LDA zpRemainingBitsLo
-           BNE HaveSeq
-           LDA zpRemainingBitsHi
-           BNE HaveSeq
+           CMP #keyF5
+           BEQ PrevSeq
 
-           ; we have reached the end of the list, start from the beginning
-           LDA #0
-           STA zpSequenceIndex
-           JSR StartSeq
+           CMP #keyF7
+           BEQ NextSeq
 
-HaveSeq    CLI     ; enable interrupts again
            JMP MainLoop
+
+           ; switch to prev sequence
+PrevSeq    SEI                  ; suspend interrupts
+           DEC zpSequenceIndex
+           BMI LastSeq
+           JMP HaveSeq
+
+           ; switch to next sequence
+NextSeq    SEI                  ; suspend interrupts
+           INC zpSequenceIndex
+           LDA zpSequenceIndex
+           CMP #nSequences
+           BNE HaveSeq
+
+FirstSeq   LDA #0
+           STA zpSequenceIndex
+           JMP HaveSeq
+
+LastSeq    LDA #(nSequences - 1)
+           STA zpSequenceIndex
+
+HaveSeq    JSR StartSeq
+           CLI     ; enable interrupts again
+
+           ; --- mark the currently selected sequence
+
+           LDA #<screenposFirstSequenceMarker
+           STA zpMainLo
+           LDA #>screenposFirstSequenceMarker
+           STA zpMainHi
+
+           LDX #0
+MarkLoop   CPX zpSequenceIndex
+           BEQ MarkThis
+           LDA #$20 ; ' '
+           JMP MarkOther
+MarkThis   LDA #$3E ; '>'
+MarkOther  LDY #0
+           STA (zpMainLo),Y
+
+           CLC
+           LDA zpMainLo
+           ADC #40
+           STA zpMainLo
+           LDA zpMainHi
+           ADC #0
+           STA zpMainHi
+
+           INX
+           CPX #nSequences
+           BEQ MainLoop
+           JMP MarkLoop
 
 Exit       RTS
 
@@ -217,7 +353,7 @@ HaveBit    LDA zpCurrentByte ; shift the LSB out of zpCurrentByte
            PLA               ; restore the LSB from the stack
            RTS
 
-           ; --- raster interrupt ----
+           ; --- raster interrupt, once per frame at the top ----
            
 Irq        JSR NextBit
            CMP #0
@@ -229,11 +365,97 @@ ClearIt    LDA #32
            STA screenpos
 Done       LDA #1
            STA colorpos
+
+           ; set up the sample IRQ
+           LDA #rasterSample
+           STA vicRaster
+           LDA #<SampleIrq
+           STA vecIrq
+           LDA #>SampleIrq
+           STA vecIrq + 1
+
+AckIrq     ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
+           JMP kernalIrq        ; jump into KERNAL's standard interrupt service routine to handle keyboard scan, cursor display etc.
+
+           ; --- raster interrupt for sampling ------------------------
+
+SampleIrq  LDY #0
+           LDA ciaDataB2        ; sample the data line
+           ASL A
+           LDA #$30             ; '0'
+           ADC #0               ; set A to '0' or '1', depending on what we sampled
+           STA (zpSampleLo),Y
+
+           INC zpSampleLo
+           BNE IncDone
+           INC zpSampleHi
+IncDone    LDA zpSampleLo
+           CMP #<screenposDataEnd
+           BNE NotEnd
+           LDA zpSampleHi
+           CMP #>screenposDataEnd
+           BNE NotEnd
+
+           ; reset to the beginning of the data section
+           LDA #<screenposDataStart
+           STA zpSampleLo
+           LDA #>screenposDataStart
+           STA zpSampleHi
+
+NotEnd     LDA #$20             ; ' '
+           STA (zpSampleLo),Y
+
+           LDA zpSequenceIndex  ; check whether we are in the tuning sequence
+           BNE SetFrIrq
+
+           ; we are in the tuning sequence
+           ; set up the tuning-specific raster IRQ handler
+
+           LDA #rasterBarStart
+           STA vicRaster
+           LDA #<TuneIrq 
+           STA vecIrq
+           LDA #>TuneIrq
+           STA vecIrq + 1
+           JMP AckIrqRet
+
+           ; set up the top-of-frame irq
+SetFrIrq   LDA #rasterFrame
+           STA vicRaster
+           LDA #<Irq
+           STA vecIrq
+           LDA #>Irq
+           STA vecIrq + 1
+
+AckIrqRet  ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
+           JMP kernalIrqRet     ; jump into KERNAL code for returning from IRQ handler
+
+           ; --- raster interrupt for tuning --------------------------
+
+TuneIrq    LDA vicRaster
+           CLC
+           ADC #2
+           CMP #rasterBarEnd
+           BPL BarEnd
+
+           STA vicRaster        ; set up tuning raster interrupt for the next line
+
+           ; color the border depending on the state of the data line
+           LDA ciaDataB2
+           ASL A
+           BCS DataHi
+           LDA #pokeBlue
+           JMP DataDone
+DataHi     LDA #pokeYellow
+DataDone   STA vicBorder
+           JMP AckIrqRet
+
+           ; end of tuning bar; switch back to black border
+           ; and the top-of-frame IRQ
+BarEnd     LDA #pokeBlack
+           STA vicBorder
+           JMP SetFrIrq
            
-           ASL $D019            ; acknowledge the interrupt by clearing the VIC's interrupt flag
-
-           JMP $EA31            ; jump into KERNAL's standard interrupt service routine to handle keyboard scan, cursor display etc.
-
            ; --- print string (pointer to string is in Y:X) -----------
 
 PrintStr   STX zpTempLo
@@ -252,14 +474,16 @@ EndStr     RTS
 
            ; --- sequence definitions ---------------------------------
            
-           ; list of sequences, 4 bytes per sequence, terminated by 4 zero bytes
-Sequences  .word 50, seq1Hz
-           .word  1, seqOn
+           ; number of sequences
+           nSequences = 6
+
+           ; list of sequences, 4 bytes per sequence
+Sequences  .word  2, seqAlt
+           .word 50, seq1Hz
            .word  1, seqOff
-           .word  2, seqAlt
+           .word  1, seqOn
            .word 14, seqVary0
            .word 14, seqVary1
-           .word  0, 0
 
 seq1Hz     .byte $01, $00, $00, $00, $00, $00, $00
 seqOn      .byte $01
@@ -272,17 +496,91 @@ seqVary1   .byte %11011010, %00111101
            
 Usage      .byte ctrlClear, ctrlWhite
            .text "       == c64 light fantastic ==        "
-           .text "         test signal generator          "
+           .text "          tune & test program           "
            .byte ctrlNewline
-           .byte ctrlNewline
+           .byte ctrlNewline, ctrlLightGrey
            .text "* press "
            .byte ctrlReverseOn, ctrlRed
            .text "run/stop"
-           .byte ctrlReverseOff, ctrlWhite
+           .byte ctrlReverseOff, ctrlLightGrey
            .text " to quit."
            .byte ctrlNewline
            .byte ctrlNewline
-           .text "* press any other key to cycle through  "
-           .text "  the test sequences."
-           .byte ctrlNewline, 0
+           .text "* press "
+           .byte ctrlWhite
+           .text "f5"
+           .byte ctrlLightGrey
+           .text " / "
+           .byte ctrlWhite
+           .text "f7"
+           .byte ctrlLightGrey
+           .text " to cycle through  the   "
+           .text "  test sequences."
+           .byte ctrlNewline
+           .byte ctrlNewline
+           .text "  "
+           .byte ctrlYellow
+           .text " "
+           .byte ctrlLightGrey
+           .text " tuning (alternating on/off)"
+           .byte ctrlNewline
+           .text "  "
+           .byte ctrlCyan
+           .text " "
+           .byte ctrlLightGrey
+           .text " 1hz blinking"
+           .byte ctrlNewline
+           .text "  "
+           .byte ctrlCyan
+           .text " "
+           .byte ctrlLightGrey
+           .text " always off"
+           .byte ctrlNewline
+           .text "  "
+           .byte ctrlCyan
+           .text " "
+           .byte ctrlLightGrey
+           .text " always on"
+           .byte ctrlNewline
+           .text "  "
+           .byte ctrlCyan
+           .text " "
+           .byte ctrlLightGrey
+           .text " varying off time"
+           .byte ctrlNewline
+           .text "  "
+           .byte ctrlCyan
+           .text " "
+           .byte ctrlLightGrey
+           .text " varying on time"
+           .byte ctrlNewline
+           .byte ctrlNewline
+           .byte ctrlNewline
+           .byte ctrlNewline
+           .byte ctrlNewline
+           .byte ctrlNewline
+           .text "when tuning, adjust r6 such"
+           .byte ctrlNewline
+           .text "that "
+           .byte ctrlYellow
+           .text "yellow"
+           .byte ctrlLightGrey
+           .text " and "
+           .byte ctrlBlue
+           .text "blue"
+           .byte ctrlLightGrey, ctrlNewline
+           .text "borders have the same size."
+           .byte ctrlNewline
+           .text "only "
+           .byte ctrlReverseOn, ctrlBlue
+           .text "blue  "
+           .byte ctrlReverseOff, ctrlLightGrey
+           .text ": increase r6"
+           .byte ctrlNewline
+           .text "only "
+           .byte ctrlReverseOn, ctrlYellow
+           .text "yellow"
+           .byte ctrlReverseOff, ctrlLightGrey
+           .text ": decrease r6"
+           .byte 0
 
