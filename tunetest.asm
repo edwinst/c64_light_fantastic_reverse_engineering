@@ -597,13 +597,13 @@ Usage      .byte ctrlClear, ctrlWhite
            .text "when tuning, adjust r6 such"
            .byte ctrlNewline
            .text "that "
-           .byte ctrlYellow
+           .byte ctrlReverseOn, ctrlYellow
            .text "yellow"
-           .byte ctrlLightGrey
+           .byte ctrlReverseOff, ctrlLightGrey
            .text " and "
-           .byte ctrlBlue
+           .byte ctrlReverseOn, ctrlBlue
            .text "blue"
-           .byte ctrlLightGrey, ctrlNewline
+           .byte ctrlReverseOff, ctrlLightGrey, ctrlNewline
            .text "borders have the same size."
            .byte ctrlNewline
            .text "only "
