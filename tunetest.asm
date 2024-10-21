@@ -68,10 +68,12 @@
 
            pokeBlack      = $00
            pokeRed        = $02
+           pokeGreen      = $05
            pokeBlue       = $06
            pokeYellow     = $07
            pokeLightRed   = $0A
            pokeDarkGrey   = $0C
+           pokeLightGreen = $0D
            pokeLightBlue  = $0E
 
            ; --- key codes ----------------------------
@@ -377,9 +379,9 @@ Irq        LDA ciaDataB2        ; sample the data line
            LDA #$FF
            CMP zpExpectedBit
            BEQ NoExpected
-           LDA #pokeLightRed
+           LDA #pokeRed
            JMP DoneComp
-Same       LDA #pokeLightBlue
+Same       LDA #pokeLightGreen
            JMP DoneComp
 NoExpected LDA #pokeDarkGrey
 
