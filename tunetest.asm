@@ -9,6 +9,8 @@
            colorram = $D800
            colorpos = colorram + (40 * ypos) + xpos
 
+           colorramOffset = colorram - screen
+
            ; --- raster lines -------------------------
 
            ; 10 ms are 156.25 raster lines
@@ -19,10 +21,8 @@
 
            rasterStartVisible = 51
 
-           rasterFrame        = 0     ; when to do the top-of-the-frame update
-           rasterSample       = 71    ; when to sample the data line
+           rasterSample       = 71    ; when to sample the data line and update the frame
            rasterDot          = rasterStartVisible + (8 * ypos)
-
            rasterTarget       = (rasterDot + 10)
            rasterBarStart     = (rasterTarget - 14)
            rasterBarEnd       = (rasterTarget + 14)
@@ -67,9 +67,12 @@
            ; --- poke colors --------------------------
 
            pokeBlack      = $00
+           pokeRed        = $02
            pokeBlue       = $06
            pokeYellow     = $07
+           pokeLightRed   = $0A
            pokeDarkGrey   = $0C
+           pokeLightBlue  = $0E
 
            ; --- key codes ----------------------------
 
@@ -87,6 +90,7 @@
            ; --- zeropage allocations for variables ---
            
            zpCurrentByte       = $02
+           zpExpectedBit       = $07
            zpMainLo            = $0B ; for use by the main program
            zpMainHi            = $0C ; for use by the main program
            zpSampleLo          = $14 ; running pointer for sampling IRQ
@@ -140,6 +144,9 @@ Init       LDA #0
            LDA #>screenposDataStart
            STA zpSampleHi
 
+           LDA #$FF
+           STA zpExpectedBit    ; no expected bit, yet
+
            LDA #0               ; start sequence 0
            STA zpSequenceIndex
            JSR StartSeq
@@ -155,7 +162,7 @@ Init       LDA #0
            STA ciaIntCtrl1      ; acknowledge pending interrupts from CIA-1
            STA ciaIntCtrl2      ; acknowledge pending interrupts from CIA-2
 
-           LDA #rasterFrame     ; set rasterline where interrupt shall occur
+           LDA #rasterSample    ; set rasterline where interrupt shall occur
            STA vicRaster
 
            LDA #<Irq            ; set interrupt vectors, pointing to interrupt service routine below
@@ -353,9 +360,74 @@ HaveBit    LDA zpCurrentByte ; shift the LSB out of zpCurrentByte
            PLA               ; restore the LSB from the stack
            RTS
 
-           ; --- raster interrupt, once per frame at the top ----
+           ; --- raster interrupt, once per frame for sampling and updating the dot ----
            
-Irq        JSR NextBit
+Irq        LDA ciaDataB2        ; sample the data line
+           ASL A
+           LDA #$30             ; '0'
+           ADC #0               ; set A to '0' or '1', depending on what we sampled
+           LDY #0
+           STA (zpSampleLo),Y
+
+           ; compare with expected bit
+           SEC
+           SBC #$30             ; convert back to numerical 0 or 1
+           CMP zpExpectedBit
+           BEQ Same
+           LDA #$FF
+           CMP zpExpectedBit
+           BEQ NoExpected
+           LDA #pokeLightRed
+           JMP DoneComp
+Same       LDA #pokeLightBlue
+           JMP DoneComp
+NoExpected LDA #pokeDarkGrey
+
+           ; write color to color ram
+DoneComp   PHA
+           CLC
+           LDA zpSampleLo
+           ADC #<colorramOffset
+           STA zpSampleLo
+           LDA zpSampleHi
+           ADC #>colorramOffset
+           STA zpSampleHi
+           PLA
+           STA (zpSampleLo),Y
+           SEC
+           LDA zpSampleLo
+           SBC #<colorramOffset
+           STA zpSampleLo
+           LDA zpSampleHi
+           SBC #>colorramOffset
+           STA zpSampleHi
+
+           ; increase output position for sampled data
+           INC zpSampleLo
+           BNE IncDone
+           INC zpSampleHi
+
+           ; check whether we need to wrap the output position around
+IncDone    LDA zpSampleLo
+           CMP #<screenposDataEnd
+           BNE NotEnd
+           LDA zpSampleHi
+           CMP #>screenposDataEnd
+           BNE NotEnd
+
+           ; reset to the beginning of the output area
+           LDA #<screenposDataStart
+           STA zpSampleLo
+           LDA #>screenposDataStart
+           STA zpSampleHi
+
+           ; write a space after the most recent bit
+NotEnd     LDA #$20             ; ' '
+           STA (zpSampleLo),Y
+
+           ; update the dot
+           JSR NextBit
+           STA zpExpectedBit
            CMP #0
            BEQ ClearIt
 SetIt      LDA #81
@@ -366,47 +438,9 @@ ClearIt    LDA #32
 Done       LDA #1
            STA colorpos
 
-           ; set up the sample IRQ
-           LDA #rasterSample
-           STA vicRaster
-           LDA #<SampleIrq
-           STA vecIrq
-           LDA #>SampleIrq
-           STA vecIrq + 1
-
-AckIrq     ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
-           JMP kernalIrq        ; jump into KERNAL's standard interrupt service routine to handle keyboard scan, cursor display etc.
-
-           ; --- raster interrupt for sampling ------------------------
-
-SampleIrq  LDY #0
-           LDA ciaDataB2        ; sample the data line
-           ASL A
-           LDA #$30             ; '0'
-           ADC #0               ; set A to '0' or '1', depending on what we sampled
-           STA (zpSampleLo),Y
-
-           INC zpSampleLo
-           BNE IncDone
-           INC zpSampleHi
-IncDone    LDA zpSampleLo
-           CMP #<screenposDataEnd
-           BNE NotEnd
-           LDA zpSampleHi
-           CMP #>screenposDataEnd
-           BNE NotEnd
-
-           ; reset to the beginning of the data section
-           LDA #<screenposDataStart
-           STA zpSampleLo
-           LDA #>screenposDataStart
-           STA zpSampleHi
-
-NotEnd     LDA #$20             ; ' '
-           STA (zpSampleLo),Y
-
-           LDA zpSequenceIndex  ; check whether we are in the tuning sequence
-           BNE SetFrIrq
+           ; check whether we are in the tuning sequence
+           LDA zpSequenceIndex
+           BNE AckIrq
 
            ; we are in the tuning sequence
            ; set up the tuning-specific raster IRQ handler
@@ -417,18 +451,9 @@ NotEnd     LDA #$20             ; ' '
            STA vecIrq
            LDA #>TuneIrq
            STA vecIrq + 1
-           JMP AckIrqRet
 
-           ; set up the top-of-frame irq
-SetFrIrq   LDA #rasterFrame
-           STA vicRaster
-           LDA #<Irq
-           STA vecIrq
-           LDA #>Irq
-           STA vecIrq + 1
-
-AckIrqRet  ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
-           JMP kernalIrqRet     ; jump into KERNAL code for returning from IRQ handler
+AckIrq     ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
+           JMP kernalIrq        ; jump into KERNAL's standard interrupt service routine to handle keyboard scan, cursor display etc.
 
            ; --- raster interrupt for tuning --------------------------
 
@@ -451,11 +476,21 @@ DataDone   STA vicBorder
            JMP AckIrqRet
 
            ; end of tuning bar; switch back to black border
-           ; and the top-of-frame IRQ
+           ; and the sampling IRQ
 BarEnd     LDA #pokeBlack
            STA vicBorder
-           JMP SetFrIrq
            
+           ; set up the sample IRQ
+           LDA #rasterSample
+           STA vicRaster
+           LDA #<Irq
+           STA vecIrq
+           LDA #>Irq
+           STA vecIrq + 1
+
+AckIrqRet  ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
+           JMP kernalIrqRet     ; jump into KERNAL code for returning from IRQ handler
+
            ; --- print string (pointer to string is in Y:X) -----------
 
 PrintStr   STX zpTempLo
