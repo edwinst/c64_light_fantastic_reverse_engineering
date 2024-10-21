@@ -439,10 +439,15 @@ Done       LDA #1
            STA colorpos
 
            ; check whether we are in the tuning sequence
+           ; and wether we are expecting a high-to-low
+           ; transition
            LDA zpSequenceIndex
            BNE AckIrq
+           LDA zpExpectedBit
+           BNE AckIrq
 
-           ; we are in the tuning sequence
+           ; we are in the tuning sequence and we expect
+           ; a high-to-low transition.
            ; set up the tuning-specific raster IRQ handler
 
            LDA #rasterBarStart
