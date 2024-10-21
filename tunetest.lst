@@ -1,0 +1,701 @@
+   1                              * = $C000
+   2                               
+   3                              ; --- position of the dot ------------------
+   4                   
+   5                              xpos = 32
+   6                              ypos = 22
+   7                              screen = $0400
+   8                              screenpos = screen + (40 * ypos) + xpos
+   9                              colorram = $D800
+  10                              colorpos = colorram + (40 * ypos) + xpos
+  11                   
+  12                              colorramOffset = colorram - screen
+  13                   
+  14                              ; --- raster lines -------------------------
+  15                   
+  16                              ; 10 ms are 156.25 raster lines
+  17                              ; 20 ms are 312.50 raster lines
+  18                              ;
+  19                              ; With ypos = 22, the dot starts on raster line
+  20                              ; 227. Raster line 71 is about 10 ms before that.
+  21                   
+  22                              rasterStartVisible = 51
+  23                   
+  24                              rasterSample       = 71    ; when to sample the data line and update the frame
+  25                              rasterDot          = rasterStartVisible + (8 * ypos)
+  26                              rasterTarget       = (rasterDot + 10)
+  27                              rasterBarStart     = (rasterTarget - 14)
+  28                              rasterBarEnd       = (rasterTarget + 14)
+  29                   
+  30                              ; --- other screen positions ---------------
+  31                   
+  32                              yFirstSequence = 9
+  33                              xSequenceMarker = 2
+  34                   
+  35                              screenposFirstSequenceMarker = screen + (40 * yFirstSequence) + xSequenceMarker
+  36                               
+  37                              yData = 16
+  38                   
+  39                              screenposDataStart = screen + (40 * yData)
+  40                              screenposDataEnd   = screenposDataStart + (3 * 40)
+  41                   
+  42                              ; --- control characters -------------------
+  43                   
+  44                              ctrlWhite      = $05
+  45                              ctrlNewline    = $0D
+  46                              ctrlDown       = $11
+  47                              ctrlReverseOn  = $12
+  48                              ctrlHome       = $13
+  49                              ctrlRed        = $1C
+  50                              ctrlGreen      = $1E
+  51                              ctrlBlue       = $1F
+  52                              ctrlOrange     = $81
+  53                              ctrlBlack      = $90
+  54                              ctrlReverseOff = $92
+  55                              ctrlClear      = $93
+  56                              ctrlBrown      = $95
+  57                              ctrlLightRed   = $96
+  58                              ctrlDarkGrey   = $97
+  59                              ctrlMediumGrey = $98
+  60                              ctrlLightGreen = $99
+  61                              ctrlLightBlue  = $9A
+  62                              ctrlLightGrey  = $9B
+  63                              ctrlPurple     = $9C
+  64                              ctrlYellow     = $9E
+  65                              ctrlCyan       = $9F
+  66                   
+  67                              ; --- poke colors --------------------------
+  68                   
+  69                              pokeBlack      = $00
+  70                              pokeRed        = $02
+  71                              pokeBlue       = $06
+  72                              pokeYellow     = $07
+  73                              pokeLightRed   = $0A
+  74                              pokeDarkGrey   = $0C
+  75                              pokeLightBlue  = $0E
+  76                   
+  77                              ; --- key codes ----------------------------
+  78                   
+  79                              keyRunStop     = $03
+  80                              keyF5          = $87
+  81                              keyF7          = $88
+  82                              
+  83                              ; --- kernal vectors -----------------------
+  84                              
+  85                              outch          = $FFD2
+  86                              readkey        = $FFE4
+  87                              kernalIrq      = $EA31 ; standard IRQ handler
+  88                              kernalIrqRet   = $EA81 ; return from IRQ
+  89                   
+  90                              ; --- zeropage allocations for variables ---
+  91                              
+  92                              zpCurrentByte       = $02
+  93                              zpExpectedBit       = $07
+  94                              zpMainLo            = $0B ; for use by the main program
+  95                              zpMainHi            = $0C ; for use by the main program
+  96                              zpSampleLo          = $14 ; running pointer for sampling IRQ
+  97                              zpSampleHi          = $15 ; running pointer for sampling IRQ
+  98                              zpAvailableBits     = $FB
+  99                              zpSequenceIndex     = $FC
+ 100                              zpTempLo            = $FC ; use only during initialization
+ 101                              zpNextBytePointerLo = $FD
+ 102                              zpTempHi            = $FD ; use only during initialization
+ 103                              zpNextBytePointerHi = $FE
+ 104                              zpRemainingBitsLo   = $43
+ 105                              zpRemainingBitsHi   = $44
+ 106                   
+ 107                              ; --- interrupt vectors --------------------
+ 108                   
+ 109                              vecIrq              = $0314
+ 110                   
+ 111                              ; --- VIC registers ------------------------
+ 112                   
+ 113                              vicControl          = $D011
+ 114                              vicRaster           = $D012
+ 115                              vicIrqFlag          = $D019
+ 116                              vicIrqMask          = $D01A
+ 117                              vicBorder           = $D020
+ 118                              vicBackground       = $D021
+ 119                   
+ 120                              ; --- CIA registers ------------------------
+ 121                   
+ 122                              ciaIntCtrl1         = $DC0D ; interrupt control
+ 123                   
+ 124                              ciaDataB2           = $DD01 ; data, port B
+ 125                              ciaDataDirB2        = $DD03 ; data direction, port B
+ 126                              ciaIntCtrl2         = $DD0D ; interrupt control
+ 127                   
+ 128                              ; --- initialize the program ---
+ 129                              
+ 130 c000 a9 00        Init       LDA #0
+ 131 c002 8d 20 d0                STA vicBorder        ; border color: black
+ 132 c005 8d 21 d0                STA vicBackground    ; background color: black
+ 133 c008 8d 03 dd                STA ciaDataDirB2     ; all port B bits are inputs
+ 134                            
+ 135 c00b a9 93                   LDA #ctrlClear       ; clear the screen
+ 136 c00d 20 d2 ff                JSR outch
+ 137                   
+ 138 c010 a2 3f                   LDX #<Usage          ; print the usage message
+ 139 c012 a0 c2                   LDY #>Usage
+ 140 c014 20 02 c2                JSR PrintStr
+ 141                   
+ 142 c017 a9 80                   LDA #<screenposDataStart  ; set up screen pointer for sampling
+ 143 c019 85 14                   STA zpSampleLo
+ 144 c01b a9 06                   LDA #>screenposDataStart
+ 145 c01d 85 15                   STA zpSampleHi
+ 146                   
+ 147 c01f a9 ff                   LDA #$FF
+ 148 c021 85 07                   STA zpExpectedBit    ; no expected bit, yet
+ 149                   
+ 150 c023 a9 00                   LDA #0               ; start sequence 0
+ 151 c025 85 fc                   STA zpSequenceIndex
+ 152 c027 20 b6 c0                JSR StartSeq
+ 153                              
+ 154 c02a 78                      SEI                  ; set interrupt bit, make the CPU ignore interrupt requests
+ 155                   
+ 156 c02b a9 7f                   LDA #%01111111       ; switch off interrupt signals from CIA-1
+ 157 c02d 8d 0d dc                STA ciaIntCtrl1
+ 158                   
+ 159 c030 2d 11 d0                AND vicControl       ; clear most significant bit of VIC's raster register
+ 160 c033 8d 11 d0                STA vicControl
+ 161                   
+ 162 c036 8d 0d dc                STA ciaIntCtrl1      ; acknowledge pending interrupts from CIA-1
+ 163 c039 8d 0d dd                STA ciaIntCtrl2      ; acknowledge pending interrupts from CIA-2
+ 164                   
+ 165 c03c a9 47                   LDA #rasterSample    ; set rasterline where interrupt shall occur
+ 166 c03e 8d 12 d0                STA vicRaster
+ 167                   
+ 168 c041 a9 33                   LDA #<Irq            ; set interrupt vectors, pointing to interrupt service routine below
+ 169 c043 8d 14 03                STA vecIrq
+ 170 c046 a9 c1                   LDA #>Irq
+ 171 c048 8d 15 03                STA vecIrq + 1
+ 172                   
+ 173 c04b a9 01                   LDA #%00000001       ; enable raster interrupt signals from VIC
+ 174 c04d 8d 1a d0                STA vicIrqMask
+ 175                   
+ 176 c050 4c 83 c0                JMP HaveSeq          ; start the first sequence and enable interrupts
+ 177                   
+ 178                              ; --- main loop ---
+ 179                   
+ 180 c053 20 e4 ff     MainLoop   JSR readkey
+ 181 c056 f0 fb                   BEQ MainLoop         ; no key? -> repeat
+ 182                   
+ 183 c058 c9 03                   CMP #keyRunStop      ; has RUN/STOP been pressed?
+ 184 c05a f0 59                   BEQ Exit             ; if yes, then exit
+ 185                   
+ 186 c05c c9 87                   CMP #keyF5
+ 187 c05e f0 07                   BEQ PrevSeq
+ 188                   
+ 189 c060 c9 88                   CMP #keyF7
+ 190 c062 f0 0b                   BEQ NextSeq
+ 191                   
+ 192 c064 4c 53 c0                JMP MainLoop
+ 193                   
+ 194                              ; switch to prev sequence
+ 195 c067 78           PrevSeq    SEI                  ; suspend interrupts
+ 196 c068 c6 fc                   DEC zpSequenceIndex
+ 197 c06a 30 13                   BMI LastSeq
+ 198 c06c 4c 83 c0                JMP HaveSeq
+ 199                   
+ 200                              ; switch to next sequence
+ 201 c06f 78           NextSeq    SEI                  ; suspend interrupts
+ 202 c070 e6 fc                   INC zpSequenceIndex
+ 203 c072 a5 fc                   LDA zpSequenceIndex
+ 204 c074 c9 06                   CMP #nSequences
+ 205 c076 d0 0b                   BNE HaveSeq
+ 206                   
+ 207 c078 a9 00        FirstSeq   LDA #0
+ 208 c07a 85 fc                   STA zpSequenceIndex
+ 209 c07c 4c 83 c0                JMP HaveSeq
+ 210                   
+ 211 c07f a9 05        LastSeq    LDA #(nSequences - 1)
+ 212 c081 85 fc                   STA zpSequenceIndex
+ 213                   
+ 214 c083 20 b6 c0     HaveSeq    JSR StartSeq
+ 215 c086 58                      CLI     ; enable interrupts again
+ 216                   
+ 217                              ; --- mark the currently selected sequence
+ 218                   
+ 219 c087 a9 6a                   LDA #<screenposFirstSequenceMarker
+ 220 c089 85 0b                   STA zpMainLo
+ 221 c08b a9 05                   LDA #>screenposFirstSequenceMarker
+ 222 c08d 85 0c                   STA zpMainHi
+ 223                   
+ 224 c08f a2 00                   LDX #0
+ 225 c091 e4 fc        MarkLoop   CPX zpSequenceIndex
+ 226 c093 f0 05                   BEQ MarkThis
+ 227 c095 a9 20                   LDA #$20 ; ' '
+ 228 c097 4c 9c c0                JMP MarkOther
+ 229 c09a a9 3e        MarkThis   LDA #$3E ; '>'
+ 230 c09c a0 00        MarkOther  LDY #0
+ 231 c09e 91 0b                   STA (zpMainLo),Y
+ 232                   
+ 233 c0a0 18                      CLC
+ 234 c0a1 a5 0b                   LDA zpMainLo
+ 235 c0a3 69 28                   ADC #40
+ 236 c0a5 85 0b                   STA zpMainLo
+ 237 c0a7 a5 0c                   LDA zpMainHi
+ 238 c0a9 69 00                   ADC #0
+ 239 c0ab 85 0c                   STA zpMainHi
+ 240                   
+ 241 c0ad e8                      INX
+ 242 c0ae e0 06                   CPX #nSequences
+ 243 c0b0 f0 a1                   BEQ MainLoop
+ 244 c0b2 4c 91 c0                JMP MarkLoop
+ 245                   
+ 246 c0b5 60           Exit       RTS
+ 247                   
+ 248                              ; --- start a sequence (sequence index given in zpSequenceIndex)
+ 249                   
+ 250 c0b6 a5 fc        StartSeq   LDA zpSequenceIndex      ; multiply sequence index by 4
+ 251 c0b8 0a                      ASL A
+ 252 c0b9 0a                      ASL A
+ 253 c0ba 18                      CLC
+ 254 c0bb 69 19                   ADC #<Sequences          ; add to address of Sequences
+ 255 c0bd 85 fd                   STA zpNextBytePointerLo  ; use next byte pointer temporarily to store the address
+ 256 c0bf a9 00                   LDA #0
+ 257 c0c1 69 c2                   ADC #>Sequences
+ 258 c0c3 85 fe                   STA zpNextBytePointerHi
+ 259                   
+ 260                              ; load and store the number of bits in the sequence
+ 261 c0c5 a0 00                   LDY #0
+ 262 c0c7 b1 fd                   LDA (zpNextBytePointerLo),Y
+ 263 c0c9 85 43                   STA zpRemainingBitsLo
+ 264 c0cb a0 01                   LDY #1
+ 265 c0cd b1 fd                   LDA (zpNextBytePointerLo),Y
+ 266 c0cf 85 44                   STA zpRemainingBitsHi
+ 267                   
+ 268                              ; load and store the pointer to the sequence data
+ 269                   
+ 270 c0d1 a0 02                   LDY #2
+ 271 c0d3 b1 fd                   LDA (zpNextBytePointerLo),Y
+ 272 c0d5 48                      PHA
+ 273 c0d6 a0 03                   LDY #3
+ 274 c0d8 b1 fd                   LDA (zpNextBytePointerLo),Y
+ 275 c0da 85 fe                   STA zpNextBytePointerHi
+ 276 c0dc 68                      PLA
+ 277 c0dd 85 fd                   STA zpNextBytePointerLo
+ 278                   
+ 279                              ; clear zpAvailableBits
+ 280 c0df a9 00                   LDA #0
+ 281 c0e1 85 fb                   STA zpAvailableBits
+ 282                   
+ 283 c0e3 60                      RTS
+ 284                   
+ 285                              ; --- get the next bit in the sequence (return it in A)
+ 286                   
+ 287                              ; check whether we have available bits in zpCurrentByte
+ 288 c0e4 a5 fb        NextBit    LDA zpAvailableBits
+ 289 c0e6 d0 3d                   BNE HaveBit 
+ 290                   
+ 291                              ; --- no; we must load a byte from the sequence data
+ 292                   
+ 293                              ; check whether we have remaining bits in the sequence
+ 294                              ; (and therefore at least one byte remaining in the
+ 295                              ; sequence data)
+ 296 c0e8 a5 44                   LDA zpRemainingBitsHi
+ 297 c0ea d0 07                   BNE HaveByte
+ 298 c0ec a5 43                   LDA zpRemainingBitsLo
+ 299 c0ee d0 03                   BNE HaveByte
+ 300                   
+ 301                              ; --- no; we must restart the sequence
+ 302                   
+ 303 c0f0 20 b6 c0                JSR StartSeq
+ 304                   
+ 305                              ; --- there is at least one bit in the sequence remaining,
+ 306                              ;     so there is at least one more byte to load from the
+ 307                              ;     sequence data
+ 308                   
+ 309                              ; --- load the next byte from the sequence data,
+ 310                              ;     store it in zpCurrentByte, and update pointers
+ 311                              ;     and counters
+ 312                   
+ 313 c0f3 a0 00        HaveByte   LDY #0
+ 314 c0f5 b1 fd                   LDA (zpNextBytePointerLo),Y
+ 315 c0f7 85 02                   STA zpCurrentByte
+ 316                   
+ 317                              ; increase the next-byte-pointer
+ 318 c0f9 e6 fd                   INC zpNextBytePointerLo
+ 319 c0fb d0 02                   BNE PtrDone
+ 320 c0fd e6 fe                   INC zpNextBytePointerHi
+ 321                   
+ 322 c0ff a5 44        PtrDone    LDA zpRemainingBitsHi   ; check if at least 8 bits are remaining
+ 323 c101 d0 11                   BNE Have8
+ 324 c103 a5 43                   LDA zpRemainingBitsLo
+ 325 c105 c9 08                   CMP #8
+ 326 c107 10 0b                   BPL Have8
+ 327                   
+ 328                              ; we have less than 8 bits left (their number is in A)
+ 329 c109 85 fb                   STA zpAvailableBits
+ 330 c10b a9 00                   LDA #0
+ 331 c10d 85 43                   STA zpRemainingBitsLo ; clear number of remaining bits
+ 332 c10f 85 44                   STA zpRemainingBitsHi
+ 333 c111 4c 25 c1                JMP HaveBit 
+ 334                   
+ 335                              ; --- we have at least 8 bits remaining
+ 336                   
+ 337 c114 a9 08        Have8      LDA #8
+ 338 c116 85 fb                   STA zpAvailableBits
+ 339                              ; decrement the remaining bits counter by 8
+ 340 c118 a5 43                   LDA zpRemainingBitsLo
+ 341 c11a 38                      SEC
+ 342 c11b e9 08                   SBC #8
+ 343 c11d 85 43                   STA zpRemainingBitsLo
+ 344 c11f a5 44                   LDA zpRemainingBitsHi
+ 345 c121 e9 00                   SBC #0
+ 346 c123 85 44                   STA zpRemainingBitsHi
+ 347                   
+ 348                              ; --- we have at least one bit available in zpCurrentByte
+ 349                   
+ 350 c125 a5 02        HaveBit    LDA zpCurrentByte ; shift the LSB out of zpCurrentByte
+ 351 c127 4a                      LSR
+ 352 c128 85 02                   STA zpCurrentByte
+ 353 c12a a9 00                   LDA #0            ; and store it (the LSB) on the stack
+ 354 c12c 69 00                   ADC #0
+ 355 c12e 48                      PHA
+ 356                   
+ 357                              ; decrement zpAvailableBits
+ 358 c12f c6 fb                   DEC zpAvailableBits
+ 359                   
+ 360 c131 68                      PLA               ; restore the LSB from the stack
+ 361 c132 60                      RTS
+ 362                   
+ 363                              ; --- raster interrupt, once per frame for sampling and updating the dot ----
+ 364                              
+ 365 c133 ad 01 dd     Irq        LDA ciaDataB2        ; sample the data line
+ 366 c136 0a                      ASL A
+ 367 c137 a9 30                   LDA #$30             ; '0'
+ 368 c139 69 00                   ADC #0               ; set A to '0' or '1', depending on what we sampled
+ 369 c13b a0 00                   LDY #0
+ 370 c13d 91 14                   STA (zpSampleLo),Y
+ 371                   
+ 372                              ; compare with expected bit
+ 373 c13f 38                      SEC
+ 374 c140 e9 30                   SBC #$30             ; convert back to numerical 0 or 1
+ 375 c142 c5 07                   CMP zpExpectedBit
+ 376 c144 f0 0b                   BEQ Same
+ 377 c146 a9 ff                   LDA #$FF
+ 378 c148 c5 07                   CMP zpExpectedBit
+ 379 c14a f0 0a                   BEQ NoExpected
+ 380 c14c a9 0a                   LDA #pokeLightRed
+ 381 c14e 4c 58 c1                JMP DoneComp
+ 382 c151 a9 0e        Same       LDA #pokeLightBlue
+ 383 c153 4c 58 c1                JMP DoneComp
+ 384 c156 a9 0c        NoExpected LDA #pokeDarkGrey
+ 385                   
+ 386                              ; write color to color ram
+ 387 c158 48           DoneComp   PHA
+ 388 c159 18                      CLC
+ 389 c15a a5 14                   LDA zpSampleLo
+ 390 c15c 69 00                   ADC #<colorramOffset
+ 391 c15e 85 14                   STA zpSampleLo
+ 392 c160 a5 15                   LDA zpSampleHi
+ 393 c162 69 d4                   ADC #>colorramOffset
+ 394 c164 85 15                   STA zpSampleHi
+ 395 c166 68                      PLA
+ 396 c167 91 14                   STA (zpSampleLo),Y
+ 397 c169 38                      SEC
+ 398 c16a a5 14                   LDA zpSampleLo
+ 399 c16c e9 00                   SBC #<colorramOffset
+ 400 c16e 85 14                   STA zpSampleLo
+ 401 c170 a5 15                   LDA zpSampleHi
+ 402 c172 e9 d4                   SBC #>colorramOffset
+ 403 c174 85 15                   STA zpSampleHi
+ 404                   
+ 405                              ; increase output position for sampled data
+ 406 c176 e6 14                   INC zpSampleLo
+ 407 c178 d0 02                   BNE IncDone
+ 408 c17a e6 15                   INC zpSampleHi
+ 409                   
+ 410                              ; check whether we need to wrap the output position around
+ 411 c17c a5 14        IncDone    LDA zpSampleLo
+ 412 c17e c9 f8                   CMP #<screenposDataEnd
+ 413 c180 d0 0e                   BNE NotEnd
+ 414 c182 a5 15                   LDA zpSampleHi
+ 415 c184 c9 06                   CMP #>screenposDataEnd
+ 416 c186 d0 08                   BNE NotEnd
+ 417                   
+ 418                              ; reset to the beginning of the output area
+ 419 c188 a9 80                   LDA #<screenposDataStart
+ 420 c18a 85 14                   STA zpSampleLo
+ 421 c18c a9 06                   LDA #>screenposDataStart
+ 422 c18e 85 15                   STA zpSampleHi
+ 423                   
+ 424                              ; write a space after the most recent bit
+ 425 c190 a9 20        NotEnd     LDA #$20             ; ' '
+ 426 c192 91 14                   STA (zpSampleLo),Y
+ 427                   
+ 428                              ; update the dot
+ 429 c194 20 e4 c0                JSR NextBit
+ 430 c197 85 07                   STA zpExpectedBit
+ 431 c199 c9 00                   CMP #0
+ 432 c19b f0 08                   BEQ ClearIt
+ 433 c19d a9 51        SetIt      LDA #81
+ 434 c19f 8d 90 07                STA screenpos
+ 435 c1a2 4c aa c1                JMP Done
+ 436 c1a5 a9 20        ClearIt    LDA #32
+ 437 c1a7 8d 90 07                STA screenpos
+ 438 c1aa a9 01        Done       LDA #1
+ 439 c1ac 8d 90 db                STA colorpos
+ 440                   
+ 441                              ; check whether we are in the tuning sequence
+ 442 c1af a5 fc                   LDA zpSequenceIndex
+ 443 c1b1 d0 0f                   BNE AckIrq
+ 444                   
+ 445                              ; we are in the tuning sequence
+ 446                              ; set up the tuning-specific raster IRQ handler
+ 447                   
+ 448 c1b3 a9 df                   LDA #rasterBarStart
+ 449 c1b5 8d 12 d0                STA vicRaster
+ 450 c1b8 a9 c8                   LDA #<TuneIrq 
+ 451 c1ba 8d 14 03                STA vecIrq
+ 452 c1bd a9 c1                   LDA #>TuneIrq
+ 453 c1bf 8d 15 03                STA vecIrq + 1
+ 454                   
+ 455 c1c2 0e 19 d0     AckIrq     ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
+ 456 c1c5 4c 31 ea                JMP kernalIrq        ; jump into KERNAL's standard interrupt service routine to handle keyboard scan, cursor display etc.
+ 457                   
+ 458                              ; --- raster interrupt for tuning --------------------------
+ 459                   
+ 460 c1c8 ad 12 d0     TuneIrq    LDA vicRaster
+ 461 c1cb 18                      CLC
+ 462 c1cc 69 02                   ADC #2
+ 463 c1ce c9 fb                   CMP #rasterBarEnd
+ 464 c1d0 10 16                   BPL BarEnd
+ 465                   
+ 466 c1d2 8d 12 d0                STA vicRaster        ; set up tuning raster interrupt for the next line
+ 467                   
+ 468                              ; color the border depending on the state of the data line
+ 469 c1d5 ad 01 dd                LDA ciaDataB2
+ 470 c1d8 0a                      ASL A
+ 471 c1d9 b0 05                   BCS DataHi
+ 472 c1db a9 06                   LDA #pokeBlue
+ 473 c1dd 4c e2 c1                JMP DataDone
+ 474 c1e0 a9 07        DataHi     LDA #pokeYellow
+ 475 c1e2 8d 20 d0     DataDone   STA vicBorder
+ 476 c1e5 4c fc c1                JMP AckIrqRet
+ 477                   
+ 478                              ; end of tuning bar; switch back to black border
+ 479                              ; and the sampling IRQ
+ 480 c1e8 a9 00        BarEnd     LDA #pokeBlack
+ 481 c1ea 8d 20 d0                STA vicBorder
+ 482                              
+ 483                              ; set up the sample IRQ
+ 484 c1ed a9 47                   LDA #rasterSample
+ 485 c1ef 8d 12 d0                STA vicRaster
+ 486 c1f2 a9 33                   LDA #<Irq
+ 487 c1f4 8d 14 03                STA vecIrq
+ 488 c1f7 a9 c1                   LDA #>Irq
+ 489 c1f9 8d 15 03                STA vecIrq + 1
+ 490                   
+ 491 c1fc 0e 19 d0     AckIrqRet  ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
+ 492 c1ff 4c 81 ea                JMP kernalIrqRet     ; jump into KERNAL code for returning from IRQ handler
+ 493                   
+ 494                              ; --- print string (pointer to string is in Y:X) -----------
+ 495                   
+ 496 c202 86 fc        PrintStr   STX zpTempLo
+ 497 c204 84 fd                   STY zpTempHi
+ 498                   
+ 499 c206 a0 00        PrintLoop  LDY #0
+ 500 c208 b1 fc                   LDA (zpTempLo),Y     ; A <- byte at zeropage[zpTempHi]:zeropage[zpTempLo]
+ 501 c20a f0 0c                   BEQ EndStr
+ 502 c20c 20 d2 ff                JSR outch
+ 503 c20f e6 fc                   INC zpTempLo
+ 504 c211 d0 f3                   BNE PrintLoop
+ 505 c213 e6 fd                   INC zpTempHi
+ 506 c215 4c 06 c2                JMP PrintLoop
+ 507                              
+ 508 c218 60           EndStr     RTS 
+ 509                   
+ 510                              ; --- sequence definitions ---------------------------------
+ 511                              
+ 512                              ; number of sequences
+ 513                              nSequences = 6
+ 514                   
+ 515                              ; list of sequences, 4 bytes per sequence
+ 516 c219 02 00 3a c2 
+ 517 c21d 32 00 31 c2 
+ 518 c221 01 00 39 c2 
+ 519 c225 01 00 38 c2 
+ 520 c229 0e 00 3b c2 
+ 521 c22d 0e 00 3d c2 
+ 522                   
+ 523 c231 01 00 00 00  seq1Hz     .byte $01, $00, $00, $00, $00, $00, $00
+     c235 00 00 00 
+ 524 c238 01           seqOn      .byte $01
+ 525 c239 00           seqOff     .byte $00
+ 526 c23a 01           seqAlt     .byte $01
+ 527 c23b 25 02        seqVary0   .byte %00100101, %00000010
+ 528 c23d da 3d        seqVary1   .byte %11011010, %00111101
+ 529                   
+ 530                              ; --- strings ----------------------------------------------
+ 531                              
+ 532 c23f 93 05        Usage      .byte ctrlClear, ctrlWhite
+ 533 c241 20 20 20 20             .text "       == c64 light fantastic ==        "
+     c245 20 20 20 3d 
+     c249 3d 20 43 36 
+     c24d 34 20 4c 49 
+     c251 47 48 54 20 
+     c255 46 41 4e 54 
+     c259 41 53 54 49 
+     c25d 43 20 3d 3d 
+     c261 20 20 20 20 
+     c265 20 20 20 20 
+ 534 c269 20 20 20 20             .text "          tune & test program           "
+     c26d 20 20 20 20 
+     c271 20 20 54 55 
+     c275 4e 45 20 26 
+     c279 20 54 45 53 
+     c27d 54 20 50 52 
+     c281 4f 47 52 41 
+     c285 4d 20 20 20 
+     c289 20 20 20 20 
+     c28d 20 20 20 20 
+ 535 c291 0d                      .byte ctrlNewline
+ 536 c292 0d 9b                   .byte ctrlNewline, ctrlLightGrey
+ 537 c294 2a 20 50 52             .text "* press "
+     c298 45 53 53 20 
+ 538 c29c 12 1c                   .byte ctrlReverseOn, ctrlRed
+ 539 c29e 52 55 4e 2f             .text "run/stop"
+     c2a2 53 54 4f 50 
+ 540 c2a6 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 541 c2a8 20 54 4f 20             .text " to quit."
+     c2ac 51 55 49 54 
+     c2b0 2e 
+ 542 c2b1 0d                      .byte ctrlNewline
+ 543 c2b2 0d                      .byte ctrlNewline
+ 544 c2b3 2a 20 50 52             .text "* press "
+     c2b7 45 53 53 20 
+ 545 c2bb 05                      .byte ctrlWhite
+ 546 c2bc 46 35                   .text "f5"
+ 547 c2be 9b                      .byte ctrlLightGrey
+ 548 c2bf 20 2f 20                .text " / "
+ 549 c2c2 05                      .byte ctrlWhite
+ 550 c2c3 46 37                   .text "f7"
+ 551 c2c5 9b                      .byte ctrlLightGrey
+ 552 c2c6 20 54 4f 20             .text " to cycle through  the   "
+     c2ca 43 59 43 4c 
+     c2ce 45 20 54 48 
+     c2d2 52 4f 55 47 
+     c2d6 48 20 20 54 
+     c2da 48 45 20 20 
+     c2de 20 
+ 553 c2df 20 20 54 45             .text "  test sequences."
+     c2e3 53 54 20 53 
+     c2e7 45 51 55 45 
+     c2eb 4e 43 45 53 
+     c2ef 2e 
+ 554 c2f0 0d                      .byte ctrlNewline
+ 555 c2f1 0d                      .byte ctrlNewline
+ 556 c2f2 20 20                   .text "  "
+ 557 c2f4 9e                      .byte ctrlYellow
+ 558 c2f5 20                      .text " "
+ 559 c2f6 9b                      .byte ctrlLightGrey
+ 560 c2f7 20 54 55 4e             .text " tuning (alternating on/off)"
+     c2fb 49 4e 47 20 
+     c2ff 28 41 4c 54 
+     c303 45 52 4e 41 
+     c307 54 49 4e 47 
+     c30b 20 4f 4e 2f 
+     c30f 4f 46 46 29 
+ 561 c313 0d                      .byte ctrlNewline
+ 562 c314 20 20                   .text "  "
+ 563 c316 9f                      .byte ctrlCyan
+ 564 c317 20                      .text " "
+ 565 c318 9b                      .byte ctrlLightGrey
+ 566 c319 20 31 48 5a             .text " 1hz blinking"
+     c31d 20 42 4c 49 
+     c321 4e 4b 49 4e 
+     c325 47 
+ 567 c326 0d                      .byte ctrlNewline
+ 568 c327 20 20                   .text "  "
+ 569 c329 9f                      .byte ctrlCyan
+ 570 c32a 20                      .text " "
+ 571 c32b 9b                      .byte ctrlLightGrey
+ 572 c32c 20 41 4c 57             .text " always off"
+     c330 41 59 53 20 
+     c334 4f 46 46 
+ 573 c337 0d                      .byte ctrlNewline
+ 574 c338 20 20                   .text "  "
+ 575 c33a 9f                      .byte ctrlCyan
+ 576 c33b 20                      .text " "
+ 577 c33c 9b                      .byte ctrlLightGrey
+ 578 c33d 20 41 4c 57             .text " always on"
+     c341 41 59 53 20 
+     c345 4f 4e 
+ 579 c347 0d                      .byte ctrlNewline
+ 580 c348 20 20                   .text "  "
+ 581 c34a 9f                      .byte ctrlCyan
+ 582 c34b 20                      .text " "
+ 583 c34c 9b                      .byte ctrlLightGrey
+ 584 c34d 20 56 41 52             .text " varying off time"
+     c351 59 49 4e 47 
+     c355 20 4f 46 46 
+     c359 20 54 49 4d 
+     c35d 45 
+ 585 c35e 0d                      .byte ctrlNewline
+ 586 c35f 20 20                   .text "  "
+ 587 c361 9f                      .byte ctrlCyan
+ 588 c362 20                      .text " "
+ 589 c363 9b                      .byte ctrlLightGrey
+ 590 c364 20 56 41 52             .text " varying on time"
+     c368 59 49 4e 47 
+     c36c 20 4f 4e 20 
+     c370 54 49 4d 45 
+ 591 c374 0d                      .byte ctrlNewline
+ 592 c375 0d                      .byte ctrlNewline
+ 593 c376 0d                      .byte ctrlNewline
+ 594 c377 0d                      .byte ctrlNewline
+ 595 c378 0d                      .byte ctrlNewline
+ 596 c379 0d                      .byte ctrlNewline
+ 597 c37a 57 48 45 4e             .text "when tuning, adjust r6 such"
+     c37e 20 54 55 4e 
+     c382 49 4e 47 2c 
+     c386 20 41 44 4a 
+     c38a 55 53 54 20 
+     c38e 52 36 20 53 
+     c392 55 43 48 
+ 598 c395 0d                      .byte ctrlNewline
+ 599 c396 54 48 41 54             .text "that "
+     c39a 20 
+ 600 c39b 12 9e                   .byte ctrlReverseOn, ctrlYellow
+ 601 c39d 59 45 4c 4c             .text "yellow"
+     c3a1 4f 57 
+ 602 c3a3 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 603 c3a5 20 41 4e 44             .text " and "
+     c3a9 20 
+ 604 c3aa 12 1f                   .byte ctrlReverseOn, ctrlBlue
+ 605 c3ac 42 4c 55 45 
+ 606 c3b0 92 9b 0d                .byte ctrlReverseOff, ctrlLightGrey, ctrlNewline
+ 607 c3b3 42 4f 52 44             .text "borders have the same size."
+     c3b7 45 52 53 20 
+     c3bb 48 41 56 45 
+     c3bf 20 54 48 45 
+     c3c3 20 53 41 4d 
+     c3c7 45 20 53 49 
+     c3cb 5a 45 2e 
+ 608 c3ce 0d                      .byte ctrlNewline
+ 609 c3cf 4f 4e 4c 59             .text "only "
+     c3d3 20 
+ 610 c3d4 12 1f                   .byte ctrlReverseOn, ctrlBlue
+ 611 c3d6 42 4c 55 45             .text "blue  "
+     c3da 20 20 
+ 612 c3dc 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 613 c3de 3a 20 49 4e             .text ": increase r6"
+     c3e2 43 52 45 41 
+     c3e6 53 45 20 52 
+     c3ea 36 
+ 614 c3eb 0d                      .byte ctrlNewline
+ 615 c3ec 4f 4e 4c 59             .text "only "
+     c3f0 20 
+ 616 c3f1 12 9e                   .byte ctrlReverseOn, ctrlYellow
+ 617 c3f3 59 45 4c 4c             .text "yellow"
+     c3f7 4f 57 
+ 618 c3f9 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 619 c3fb 3a 20 44 45             .text ": decrease r6"
+     c3ff 43 52 45 41 
+     c403 53 45 20 52 
+     c407 36 
+ 620 c408 00                      .byte 0
+ 621                   
+ 622                   
