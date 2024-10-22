@@ -465,12 +465,8 @@ AckIrq     ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC'
            ; --- raster interrupt for tuning --------------------------
 
 TuneIrq    LDA vicRaster
-           CLC
-           ADC #2
            CMP #rasterBarEnd
            BPL BarEnd
-
-           STA vicRaster        ; set up tuning raster interrupt for the next line
 
            ; color the border depending on the state of the data line
            LDA ciaDataB2
@@ -480,7 +476,7 @@ TuneIrq    LDA vicRaster
            JMP DataDone
 DataHi     LDA #pokeYellow
 DataDone   STA vicBorder
-           JMP AckIrqRet
+           JMP TuneIrq
 
            ; end of tuning bar; switch back to black border
            ; and the sampling IRQ

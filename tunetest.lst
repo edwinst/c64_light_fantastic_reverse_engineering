@@ -137,9 +137,9 @@
  137 c00b a9 93                   LDA #ctrlClear       ; clear the screen
  138 c00d 20 d2 ff                JSR outch
  139                   
- 140 c010 a2 43                   LDX #<Usage          ; print the usage message
+ 140 c010 a2 3d                   LDX #<Usage          ; print the usage message
  141 c012 a0 c2                   LDY #>Usage
- 142 c014 20 06 c2                JSR PrintStr
+ 142 c014 20 00 c2                JSR PrintStr
  143                   
  144 c017 a9 80                   LDA #<screenposDataStart  ; set up screen pointer for sampling
  145 c019 85 14                   STA zpSampleLo
@@ -253,7 +253,7 @@
  253 c0b8 0a                      ASL A
  254 c0b9 0a                      ASL A
  255 c0ba 18                      CLC
- 256 c0bb 69 1d                   ADC #<Sequences          ; add to address of Sequences
+ 256 c0bb 69 17                   ADC #<Sequences          ; add to address of Sequences
  257 c0bd 85 fd                   STA zpNextBytePointerLo  ; use next byte pointer temporarily to store the address
  258 c0bf a9 00                   LDA #0
  259 c0c1 69 c2                   ADC #>Sequences
@@ -465,244 +465,240 @@
  465                              ; --- raster interrupt for tuning --------------------------
  466                   
  467 c1cc ad 12 d0     TuneIrq    LDA vicRaster
- 468 c1cf 18                      CLC
- 469 c1d0 69 02                   ADC #2
- 470 c1d2 c9 fb                   CMP #rasterBarEnd
- 471 c1d4 10 16                   BPL BarEnd
- 472                   
- 473 c1d6 8d 12 d0                STA vicRaster        ; set up tuning raster interrupt for the next line
- 474                   
- 475                              ; color the border depending on the state of the data line
- 476 c1d9 ad 01 dd                LDA ciaDataB2
- 477 c1dc 0a                      ASL A
- 478 c1dd b0 05                   BCS DataHi
- 479 c1df a9 06                   LDA #pokeBlue
- 480 c1e1 4c e6 c1                JMP DataDone
- 481 c1e4 a9 07        DataHi     LDA #pokeYellow
- 482 c1e6 8d 20 d0     DataDone   STA vicBorder
- 483 c1e9 4c 00 c2                JMP AckIrqRet
- 484                   
- 485                              ; end of tuning bar; switch back to black border
- 486                              ; and the sampling IRQ
- 487 c1ec a9 00        BarEnd     LDA #pokeBlack
- 488 c1ee 8d 20 d0                STA vicBorder
- 489                              
- 490                              ; set up the sample IRQ
- 491 c1f1 a9 47                   LDA #rasterSample
- 492 c1f3 8d 12 d0                STA vicRaster
- 493 c1f6 a9 33                   LDA #<Irq
- 494 c1f8 8d 14 03                STA vecIrq
- 495 c1fb a9 c1                   LDA #>Irq
- 496 c1fd 8d 15 03                STA vecIrq + 1
- 497                   
- 498 c200 0e 19 d0     AckIrqRet  ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
- 499 c203 4c 81 ea                JMP kernalIrqRet     ; jump into KERNAL code for returning from IRQ handler
- 500                   
- 501                              ; --- print string (pointer to string is in Y:X) -----------
- 502                   
- 503 c206 86 fc        PrintStr   STX zpTempLo
- 504 c208 84 fd                   STY zpTempHi
- 505                   
- 506 c20a a0 00        PrintLoop  LDY #0
- 507 c20c b1 fc                   LDA (zpTempLo),Y     ; A <- byte at zeropage[zpTempHi]:zeropage[zpTempLo]
- 508 c20e f0 0c                   BEQ EndStr
- 509 c210 20 d2 ff                JSR outch
- 510 c213 e6 fc                   INC zpTempLo
- 511 c215 d0 f3                   BNE PrintLoop
- 512 c217 e6 fd                   INC zpTempHi
- 513 c219 4c 0a c2                JMP PrintLoop
+ 468 c1cf c9 fb                   CMP #rasterBarEnd
+ 469 c1d1 10 13                   BPL BarEnd
+ 470                   
+ 471                              ; color the border depending on the state of the data line
+ 472 c1d3 ad 01 dd                LDA ciaDataB2
+ 473 c1d6 0a                      ASL A
+ 474 c1d7 b0 05                   BCS DataHi
+ 475 c1d9 a9 06                   LDA #pokeBlue
+ 476 c1db 4c e0 c1                JMP DataDone
+ 477 c1de a9 07        DataHi     LDA #pokeYellow
+ 478 c1e0 8d 20 d0     DataDone   STA vicBorder
+ 479 c1e3 4c cc c1                JMP TuneIrq
+ 480                   
+ 481                              ; end of tuning bar; switch back to black border
+ 482                              ; and the sampling IRQ
+ 483 c1e6 a9 00        BarEnd     LDA #pokeBlack
+ 484 c1e8 8d 20 d0                STA vicBorder
+ 485                              
+ 486                              ; set up the sample IRQ
+ 487 c1eb a9 47                   LDA #rasterSample
+ 488 c1ed 8d 12 d0                STA vicRaster
+ 489 c1f0 a9 33                   LDA #<Irq
+ 490 c1f2 8d 14 03                STA vecIrq
+ 491 c1f5 a9 c1                   LDA #>Irq
+ 492 c1f7 8d 15 03                STA vecIrq + 1
+ 493                   
+ 494 c1fa 0e 19 d0     AckIrqRet  ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
+ 495 c1fd 4c 81 ea                JMP kernalIrqRet     ; jump into KERNAL code for returning from IRQ handler
+ 496                   
+ 497                              ; --- print string (pointer to string is in Y:X) -----------
+ 498                   
+ 499 c200 86 fc        PrintStr   STX zpTempLo
+ 500 c202 84 fd                   STY zpTempHi
+ 501                   
+ 502 c204 a0 00        PrintLoop  LDY #0
+ 503 c206 b1 fc                   LDA (zpTempLo),Y     ; A <- byte at zeropage[zpTempHi]:zeropage[zpTempLo]
+ 504 c208 f0 0c                   BEQ EndStr
+ 505 c20a 20 d2 ff                JSR outch
+ 506 c20d e6 fc                   INC zpTempLo
+ 507 c20f d0 f3                   BNE PrintLoop
+ 508 c211 e6 fd                   INC zpTempHi
+ 509 c213 4c 04 c2                JMP PrintLoop
+ 510                              
+ 511 c216 60           EndStr     RTS 
+ 512                   
+ 513                              ; --- sequence definitions ---------------------------------
  514                              
- 515 c21c 60           EndStr     RTS 
- 516                   
- 517                              ; --- sequence definitions ---------------------------------
- 518                              
- 519                              ; number of sequences
- 520                              nSequences = 6
- 521                   
- 522                              ; list of sequences, 4 bytes per sequence
- 523 c21d 02 00 3e c2 
- 524 c221 32 00 35 c2 
- 525 c225 01 00 3d c2 
- 526 c229 01 00 3c c2 
- 527 c22d 0e 00 3f c2 
- 528 c231 0e 00 41 c2 
- 529                   
- 530 c235 01 00 00 00  seq1Hz     .byte $01, $00, $00, $00, $00, $00, $00
-     c239 00 00 00 
- 531 c23c 01           seqOn      .byte $01
- 532 c23d 00           seqOff     .byte $00
- 533 c23e 01           seqAlt     .byte $01
- 534 c23f 25 02        seqVary0   .byte %00100101, %00000010
- 535 c241 da 3d        seqVary1   .byte %11011010, %00111101
- 536                   
- 537                              ; --- strings ----------------------------------------------
- 538                              
- 539 c243 93 05        Usage      .byte ctrlClear, ctrlWhite
- 540 c245 20 20 20 20             .text "       == c64 light fantastic ==        "
-     c249 20 20 20 3d 
-     c24d 3d 20 43 36 
-     c251 34 20 4c 49 
-     c255 47 48 54 20 
-     c259 46 41 4e 54 
-     c25d 41 53 54 49 
-     c261 43 20 3d 3d 
-     c265 20 20 20 20 
-     c269 20 20 20 20 
- 541 c26d 20 20 20 20             .text "          tune & test program           "
-     c271 20 20 20 20 
-     c275 20 20 54 55 
-     c279 4e 45 20 26 
-     c27d 20 54 45 53 
-     c281 54 20 50 52 
-     c285 4f 47 52 41 
-     c289 4d 20 20 20 
-     c28d 20 20 20 20 
-     c291 20 20 20 20 
- 542 c295 0d                      .byte ctrlNewline
- 543 c296 0d 9b                   .byte ctrlNewline, ctrlLightGrey
- 544 c298 2a 20 50 52             .text "* press "
-     c29c 45 53 53 20 
- 545 c2a0 12 1c                   .byte ctrlReverseOn, ctrlRed
- 546 c2a2 52 55 4e 2f             .text "run/stop"
-     c2a6 53 54 4f 50 
- 547 c2aa 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 548 c2ac 20 54 4f 20             .text " to quit."
-     c2b0 51 55 49 54 
-     c2b4 2e 
- 549 c2b5 0d                      .byte ctrlNewline
- 550 c2b6 0d                      .byte ctrlNewline
- 551 c2b7 2a 20 50 52             .text "* press "
-     c2bb 45 53 53 20 
- 552 c2bf 05                      .byte ctrlWhite
- 553 c2c0 46 35                   .text "f5"
- 554 c2c2 9b                      .byte ctrlLightGrey
- 555 c2c3 20 2f 20                .text " / "
- 556 c2c6 05                      .byte ctrlWhite
- 557 c2c7 46 37                   .text "f7"
- 558 c2c9 9b                      .byte ctrlLightGrey
- 559 c2ca 20 54 4f 20             .text " to cycle through  the   "
-     c2ce 43 59 43 4c 
-     c2d2 45 20 54 48 
-     c2d6 52 4f 55 47 
-     c2da 48 20 20 54 
-     c2de 48 45 20 20 
-     c2e2 20 
- 560 c2e3 20 20 54 45             .text "  test sequences."
-     c2e7 53 54 20 53 
-     c2eb 45 51 55 45 
-     c2ef 4e 43 45 53 
-     c2f3 2e 
- 561 c2f4 0d                      .byte ctrlNewline
- 562 c2f5 0d                      .byte ctrlNewline
- 563 c2f6 20 20                   .text "  "
- 564 c2f8 9e                      .byte ctrlYellow
- 565 c2f9 20                      .text " "
- 566 c2fa 9b                      .byte ctrlLightGrey
- 567 c2fb 20 54 55 4e             .text " tuning (alternating on/off)"
-     c2ff 49 4e 47 20 
-     c303 28 41 4c 54 
-     c307 45 52 4e 41 
-     c30b 54 49 4e 47 
-     c30f 20 4f 4e 2f 
-     c313 4f 46 46 29 
- 568 c317 0d                      .byte ctrlNewline
- 569 c318 20 20                   .text "  "
- 570 c31a 9f                      .byte ctrlCyan
- 571 c31b 20                      .text " "
- 572 c31c 9b                      .byte ctrlLightGrey
- 573 c31d 20 31 48 5a             .text " 1hz blinking"
-     c321 20 42 4c 49 
-     c325 4e 4b 49 4e 
-     c329 47 
- 574 c32a 0d                      .byte ctrlNewline
- 575 c32b 20 20                   .text "  "
- 576 c32d 9f                      .byte ctrlCyan
- 577 c32e 20                      .text " "
- 578 c32f 9b                      .byte ctrlLightGrey
- 579 c330 20 41 4c 57             .text " always off"
-     c334 41 59 53 20 
-     c338 4f 46 46 
- 580 c33b 0d                      .byte ctrlNewline
- 581 c33c 20 20                   .text "  "
- 582 c33e 9f                      .byte ctrlCyan
- 583 c33f 20                      .text " "
- 584 c340 9b                      .byte ctrlLightGrey
- 585 c341 20 41 4c 57             .text " always on"
-     c345 41 59 53 20 
-     c349 4f 4e 
- 586 c34b 0d                      .byte ctrlNewline
- 587 c34c 20 20                   .text "  "
- 588 c34e 9f                      .byte ctrlCyan
- 589 c34f 20                      .text " "
- 590 c350 9b                      .byte ctrlLightGrey
- 591 c351 20 56 41 52             .text " varying off time"
-     c355 59 49 4e 47 
-     c359 20 4f 46 46 
-     c35d 20 54 49 4d 
-     c361 45 
- 592 c362 0d                      .byte ctrlNewline
- 593 c363 20 20                   .text "  "
- 594 c365 9f                      .byte ctrlCyan
- 595 c366 20                      .text " "
- 596 c367 9b                      .byte ctrlLightGrey
- 597 c368 20 56 41 52             .text " varying on time"
-     c36c 59 49 4e 47 
-     c370 20 4f 4e 20 
-     c374 54 49 4d 45 
- 598 c378 0d                      .byte ctrlNewline
- 599 c379 0d                      .byte ctrlNewline
- 600 c37a 0d                      .byte ctrlNewline
- 601 c37b 0d                      .byte ctrlNewline
- 602 c37c 0d                      .byte ctrlNewline
- 603 c37d 0d                      .byte ctrlNewline
- 604 c37e 57 48 45 4e             .text "when tuning, adjust r6 such"
-     c382 20 54 55 4e 
-     c386 49 4e 47 2c 
-     c38a 20 41 44 4a 
-     c38e 55 53 54 20 
-     c392 52 36 20 53 
-     c396 55 43 48 
- 605 c399 0d                      .byte ctrlNewline
- 606 c39a 54 48 41 54             .text "that "
-     c39e 20 
- 607 c39f 12 9e                   .byte ctrlReverseOn, ctrlYellow
- 608 c3a1 59 45 4c 4c             .text "yellow"
-     c3a5 4f 57 
- 609 c3a7 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 610 c3a9 20 41 4e 44             .text " and "
-     c3ad 20 
- 611 c3ae 12 1f                   .byte ctrlReverseOn, ctrlBlue
- 612 c3b0 42 4c 55 45 
- 613 c3b4 92 9b 0d                .byte ctrlReverseOff, ctrlLightGrey, ctrlNewline
- 614 c3b7 42 4f 52 44             .text "borders have the same size."
-     c3bb 45 52 53 20 
-     c3bf 48 41 56 45 
-     c3c3 20 54 48 45 
-     c3c7 20 53 41 4d 
-     c3cb 45 20 53 49 
-     c3cf 5a 45 2e 
- 615 c3d2 0d                      .byte ctrlNewline
- 616 c3d3 4f 4e 4c 59             .text "only "
-     c3d7 20 
- 617 c3d8 12 1f                   .byte ctrlReverseOn, ctrlBlue
- 618 c3da 42 4c 55 45             .text "blue  "
-     c3de 20 20 
- 619 c3e0 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 620 c3e2 3a 20 49 4e             .text ": increase r6"
-     c3e6 43 52 45 41 
-     c3ea 53 45 20 52 
-     c3ee 36 
- 621 c3ef 0d                      .byte ctrlNewline
- 622 c3f0 4f 4e 4c 59             .text "only "
-     c3f4 20 
- 623 c3f5 12 9e                   .byte ctrlReverseOn, ctrlYellow
- 624 c3f7 59 45 4c 4c             .text "yellow"
-     c3fb 4f 57 
- 625 c3fd 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 626 c3ff 3a 20 44 45             .text ": decrease r6"
-     c403 43 52 45 41 
-     c407 53 45 20 52 
-     c40b 36 
- 627 c40c 00                      .byte 0
- 628                   
- 629                   
+ 515                              ; number of sequences
+ 516                              nSequences = 6
+ 517                   
+ 518                              ; list of sequences, 4 bytes per sequence
+ 519 c217 02 00 38 c2 
+ 520 c21b 32 00 2f c2 
+ 521 c21f 01 00 37 c2 
+ 522 c223 01 00 36 c2 
+ 523 c227 0e 00 39 c2 
+ 524 c22b 0e 00 3b c2 
+ 525                   
+ 526 c22f 01 00 00 00  seq1Hz     .byte $01, $00, $00, $00, $00, $00, $00
+     c233 00 00 00 
+ 527 c236 01           seqOn      .byte $01
+ 528 c237 00           seqOff     .byte $00
+ 529 c238 01           seqAlt     .byte $01
+ 530 c239 25 02        seqVary0   .byte %00100101, %00000010
+ 531 c23b da 3d        seqVary1   .byte %11011010, %00111101
+ 532                   
+ 533                              ; --- strings ----------------------------------------------
+ 534                              
+ 535 c23d 93 05        Usage      .byte ctrlClear, ctrlWhite
+ 536 c23f 20 20 20 20             .text "       == c64 light fantastic ==        "
+     c243 20 20 20 3d 
+     c247 3d 20 43 36 
+     c24b 34 20 4c 49 
+     c24f 47 48 54 20 
+     c253 46 41 4e 54 
+     c257 41 53 54 49 
+     c25b 43 20 3d 3d 
+     c25f 20 20 20 20 
+     c263 20 20 20 20 
+ 537 c267 20 20 20 20             .text "          tune & test program           "
+     c26b 20 20 20 20 
+     c26f 20 20 54 55 
+     c273 4e 45 20 26 
+     c277 20 54 45 53 
+     c27b 54 20 50 52 
+     c27f 4f 47 52 41 
+     c283 4d 20 20 20 
+     c287 20 20 20 20 
+     c28b 20 20 20 20 
+ 538 c28f 0d                      .byte ctrlNewline
+ 539 c290 0d 9b                   .byte ctrlNewline, ctrlLightGrey
+ 540 c292 2a 20 50 52             .text "* press "
+     c296 45 53 53 20 
+ 541 c29a 12 1c                   .byte ctrlReverseOn, ctrlRed
+ 542 c29c 52 55 4e 2f             .text "run/stop"
+     c2a0 53 54 4f 50 
+ 543 c2a4 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 544 c2a6 20 54 4f 20             .text " to quit."
+     c2aa 51 55 49 54 
+     c2ae 2e 
+ 545 c2af 0d                      .byte ctrlNewline
+ 546 c2b0 0d                      .byte ctrlNewline
+ 547 c2b1 2a 20 50 52             .text "* press "
+     c2b5 45 53 53 20 
+ 548 c2b9 05                      .byte ctrlWhite
+ 549 c2ba 46 35                   .text "f5"
+ 550 c2bc 9b                      .byte ctrlLightGrey
+ 551 c2bd 20 2f 20                .text " / "
+ 552 c2c0 05                      .byte ctrlWhite
+ 553 c2c1 46 37                   .text "f7"
+ 554 c2c3 9b                      .byte ctrlLightGrey
+ 555 c2c4 20 54 4f 20             .text " to cycle through  the   "
+     c2c8 43 59 43 4c 
+     c2cc 45 20 54 48 
+     c2d0 52 4f 55 47 
+     c2d4 48 20 20 54 
+     c2d8 48 45 20 20 
+     c2dc 20 
+ 556 c2dd 20 20 54 45             .text "  test sequences."
+     c2e1 53 54 20 53 
+     c2e5 45 51 55 45 
+     c2e9 4e 43 45 53 
+     c2ed 2e 
+ 557 c2ee 0d                      .byte ctrlNewline
+ 558 c2ef 0d                      .byte ctrlNewline
+ 559 c2f0 20 20                   .text "  "
+ 560 c2f2 9e                      .byte ctrlYellow
+ 561 c2f3 20                      .text " "
+ 562 c2f4 9b                      .byte ctrlLightGrey
+ 563 c2f5 20 54 55 4e             .text " tuning (alternating on/off)"
+     c2f9 49 4e 47 20 
+     c2fd 28 41 4c 54 
+     c301 45 52 4e 41 
+     c305 54 49 4e 47 
+     c309 20 4f 4e 2f 
+     c30d 4f 46 46 29 
+ 564 c311 0d                      .byte ctrlNewline
+ 565 c312 20 20                   .text "  "
+ 566 c314 9f                      .byte ctrlCyan
+ 567 c315 20                      .text " "
+ 568 c316 9b                      .byte ctrlLightGrey
+ 569 c317 20 31 48 5a             .text " 1hz blinking"
+     c31b 20 42 4c 49 
+     c31f 4e 4b 49 4e 
+     c323 47 
+ 570 c324 0d                      .byte ctrlNewline
+ 571 c325 20 20                   .text "  "
+ 572 c327 9f                      .byte ctrlCyan
+ 573 c328 20                      .text " "
+ 574 c329 9b                      .byte ctrlLightGrey
+ 575 c32a 20 41 4c 57             .text " always off"
+     c32e 41 59 53 20 
+     c332 4f 46 46 
+ 576 c335 0d                      .byte ctrlNewline
+ 577 c336 20 20                   .text "  "
+ 578 c338 9f                      .byte ctrlCyan
+ 579 c339 20                      .text " "
+ 580 c33a 9b                      .byte ctrlLightGrey
+ 581 c33b 20 41 4c 57             .text " always on"
+     c33f 41 59 53 20 
+     c343 4f 4e 
+ 582 c345 0d                      .byte ctrlNewline
+ 583 c346 20 20                   .text "  "
+ 584 c348 9f                      .byte ctrlCyan
+ 585 c349 20                      .text " "
+ 586 c34a 9b                      .byte ctrlLightGrey
+ 587 c34b 20 56 41 52             .text " varying off time"
+     c34f 59 49 4e 47 
+     c353 20 4f 46 46 
+     c357 20 54 49 4d 
+     c35b 45 
+ 588 c35c 0d                      .byte ctrlNewline
+ 589 c35d 20 20                   .text "  "
+ 590 c35f 9f                      .byte ctrlCyan
+ 591 c360 20                      .text " "
+ 592 c361 9b                      .byte ctrlLightGrey
+ 593 c362 20 56 41 52             .text " varying on time"
+     c366 59 49 4e 47 
+     c36a 20 4f 4e 20 
+     c36e 54 49 4d 45 
+ 594 c372 0d                      .byte ctrlNewline
+ 595 c373 0d                      .byte ctrlNewline
+ 596 c374 0d                      .byte ctrlNewline
+ 597 c375 0d                      .byte ctrlNewline
+ 598 c376 0d                      .byte ctrlNewline
+ 599 c377 0d                      .byte ctrlNewline
+ 600 c378 57 48 45 4e             .text "when tuning, adjust r6 such"
+     c37c 20 54 55 4e 
+     c380 49 4e 47 2c 
+     c384 20 41 44 4a 
+     c388 55 53 54 20 
+     c38c 52 36 20 53 
+     c390 55 43 48 
+ 601 c393 0d                      .byte ctrlNewline
+ 602 c394 54 48 41 54             .text "that "
+     c398 20 
+ 603 c399 12 9e                   .byte ctrlReverseOn, ctrlYellow
+ 604 c39b 59 45 4c 4c             .text "yellow"
+     c39f 4f 57 
+ 605 c3a1 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 606 c3a3 20 41 4e 44             .text " and "
+     c3a7 20 
+ 607 c3a8 12 1f                   .byte ctrlReverseOn, ctrlBlue
+ 608 c3aa 42 4c 55 45 
+ 609 c3ae 92 9b 0d                .byte ctrlReverseOff, ctrlLightGrey, ctrlNewline
+ 610 c3b1 42 4f 52 44             .text "borders have the same size."
+     c3b5 45 52 53 20 
+     c3b9 48 41 56 45 
+     c3bd 20 54 48 45 
+     c3c1 20 53 41 4d 
+     c3c5 45 20 53 49 
+     c3c9 5a 45 2e 
+ 611 c3cc 0d                      .byte ctrlNewline
+ 612 c3cd 4f 4e 4c 59             .text "only "
+     c3d1 20 
+ 613 c3d2 12 1f                   .byte ctrlReverseOn, ctrlBlue
+ 614 c3d4 42 4c 55 45             .text "blue  "
+     c3d8 20 20 
+ 615 c3da 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 616 c3dc 3a 20 49 4e             .text ": increase r6"
+     c3e0 43 52 45 41 
+     c3e4 53 45 20 52 
+     c3e8 36 
+ 617 c3e9 0d                      .byte ctrlNewline
+ 618 c3ea 4f 4e 4c 59             .text "only "
+     c3ee 20 
+ 619 c3ef 12 9e                   .byte ctrlReverseOn, ctrlYellow
+ 620 c3f1 59 45 4c 4c             .text "yellow"
+     c3f5 4f 57 
+ 621 c3f7 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 622 c3f9 3a 20 44 45             .text ": decrease r6"
+     c3fd 43 52 45 41 
+     c401 53 45 20 52 
+     c405 36 
+ 623 c406 00                      .byte 0
+ 624                   
+ 625                   
