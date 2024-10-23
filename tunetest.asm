@@ -15,24 +15,24 @@
 
            ; 10 ms are 156.25 raster lines
            ; 20 ms are 312.50 raster lines
-           ;
-           ; With ypos = 22, the dot starts on raster line
-           ; 227. Raster line 71 is about 10 ms before that.
 
            rasterStartVisible = 51
            rasterEndVisible   = (rasterStartVisible + 200)
 
            rasterSample       = 71    ; when to sample the data line and update the frame
+                                      ; Note: With ypos = 22, the dot starts on raster line
+                                      ; 227. Raster line 71 is about 10 ms before that.
 
            rasterDot          = rasterStartVisible + (8 * ypos)
 
-           rasterBarOffset = 0   ; how many raster lines after the low-to-high transition (+ 20 ms) to start looking for high-to-low
-           rasterBarTarget = 8   ; how many raster lines after the low-to-high transition (+ 20 ms) we want the high-to-low transition
-                                 ; Note: 8 raster lines is 512 µs, i.e. about .5 ms
-           rasterBarHeight = 2 * (rasterBarTarget - rasterBarOffset)
+           rasterBarOffset    = 0   ; how many raster lines after the low-to-high transition (+ 20 ms) to start looking for high-to-low
+                                    ; Note: This is also when we start drawing the yellow/blue bar.
+           rasterBarTarget    = 8   ; how many raster lines after the low-to-high transition (+ 20 ms) we want the high-to-low transition
+                                    ; Note: 8 raster lines is 512 µs, i.e. about .5 ms
+           rasterBarHeight    = 2 * (rasterBarTarget - rasterBarOffset)
 
-           rasterRisingStart  = rasterDot - 10 ; when we start to expect the rising edge
-           rasterRisingEnd    = 255 - (rasterBarHeight + 1) ; we must not overrun the 8-bit range of raster line indices
+           rasterRisingStart  = rasterDot - 10 ; when we start to look for the rising edge
+           rasterRisingEnd    = rasterEndVisible - (rasterBarHeight + rasterBarOffset)
 
            rasterRisingToBarEndOffset = rasterBarOffset + rasterBarHeight
 
@@ -533,9 +533,8 @@ AckIrqRet  ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC'
 
            ; --- raster interrupt for tuning; captures the low-to-high transition ---
 
-RisingIrq 
            ; first, we expect to see a low level
-           LDA ciaDataB2
+RisingIrq  LDA ciaDataB2
            ASL A
            BCS GiveUp      ; if not, signal problem
 

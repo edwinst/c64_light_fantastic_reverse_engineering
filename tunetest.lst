@@ -15,24 +15,24 @@
   15                   
   16                              ; 10 ms are 156.25 raster lines
   17                              ; 20 ms are 312.50 raster lines
-  18                              ;
-  19                              ; With ypos = 22, the dot starts on raster line
-  20                              ; 227. Raster line 71 is about 10 ms before that.
+  18                   
+  19                              rasterStartVisible = 51
+  20                              rasterEndVisible   = (rasterStartVisible + 200)
   21                   
-  22                              rasterStartVisible = 51
-  23                              rasterEndVisible   = (rasterStartVisible + 200)
-  24                   
-  25                              rasterSample       = 71    ; when to sample the data line and update the frame
-  26                   
-  27                              rasterDot          = rasterStartVisible + (8 * ypos)
-  28                   
-  29                              rasterBarOffset = 0   ; how many raster lines after the low-to-high transition (+ 20 ms) to start looking for high-to-low
-  30                              rasterBarTarget = 8   ; how many raster lines after the low-to-high transition (+ 20 ms) we want the high-to-low transition
-  31                                                    ; Note: 8 raster lines is 512 µs, i.e. about .5 ms
-  32                              rasterBarHeight = 2 * (rasterBarTarget - rasterBarOffset)
+  22                              rasterSample       = 71    ; when to sample the data line and update the frame
+  23                                                         ; Note: With ypos = 22, the dot starts on raster line
+  24                                                         ; 227. Raster line 71 is about 10 ms before that.
+  25                   
+  26                              rasterDot          = rasterStartVisible + (8 * ypos)
+  27                   
+  28                              rasterBarOffset    = 0   ; how many raster lines after the low-to-high transition (+ 20 ms) to start looking for high-to-low
+  29                                                       ; Note: This is also when we start drawing the yellow/blue bar.
+  30                              rasterBarTarget    = 8   ; how many raster lines after the low-to-high transition (+ 20 ms) we want the high-to-low transition
+  31                                                       ; Note: 8 raster lines is 512 µs, i.e. about .5 ms
+  32                              rasterBarHeight    = 2 * (rasterBarTarget - rasterBarOffset)
   33                   
-  34                              rasterRisingStart  = rasterDot - 10 ; when we start to expect the rising edge
-  35                              rasterRisingEnd    = 255 - (rasterBarHeight + 1) ; we must not overrun the 8-bit range of raster line indices
+  34                              rasterRisingStart  = rasterDot - 10 ; when we start to look for the rising edge
+  35                              rasterRisingEnd    = rasterEndVisible - (rasterBarHeight + rasterBarOffset)
   36                   
   37                              rasterRisingToBarEndOffset = rasterBarOffset + rasterBarHeight
   38                   
@@ -533,74 +533,73 @@
  533                   
  534                              ; --- raster interrupt for tuning; captures the low-to-high transition ---
  535                   
- 536                   RisingIrq 
- 537                              ; first, we expect to see a low level
- 538 c220 ad 01 dd                LDA ciaDataB2
- 539 c223 0a                      ASL A
- 540 c224 b0 14                   BCS GiveUp      ; if not, signal problem
- 541                   
- 542                              ; now, let's wait for the high level (but not forever)
- 543 c226 ad 12 d0     RisingLoop LDA vicRaster
- 544 c229 c9 ee                   CMP #rasterRisingEnd
- 545 c22b 10 0d                   BPL GiveUp      ; we've been waiting too long; give up
- 546 c22d 48                      PHA             ; temporarily save the raster line number
- 547 c22e ad 01 dd                LDA ciaDataB2
- 548 c231 0a                      ASL A
- 549 c232 68                      PLA             ; restore the raster line number we read
- 550 c233 90 f1                   BCC RisingLoop  ; if not high yet, repeat the loop
- 551                   
- 552                              ; we just saw a low-to-high transition; remember the raster line
- 553 c235 85 19                   STA zpRisingRaster     ; we know this is <= rasterRisingEnd
- 554 c237 4c 06 c2                JMP BarEnd
- 555                   
- 556                              ; we did not see a low-to-high transition; signal a problem
- 557 c23a a9 00        GiveUp     LDA #0
- 558 c23c 85 19                   STA zpRisingRaster
- 559 c23e a9 02                   LDA #pokeRed
- 560 c240 8d 20 d0                STA vicBorder
- 561 c243 4c 0b c2                JMP SetSample
- 562                   
- 563                              ; --- print string (pointer to string is in Y:X) -----------
- 564                   
- 565 c246 86 fc        PrintStr   STX zpTempLo
- 566 c248 84 fd                   STY zpTempHi
- 567                   
- 568 c24a a0 00        PrintLoop  LDY #0
- 569 c24c b1 fc                   LDA (zpTempLo),Y     ; A <- byte at zeropage[zpTempHi]:zeropage[zpTempLo]
- 570 c24e f0 0c                   BEQ EndStr
- 571 c250 20 d2 ff                JSR outch
- 572 c253 e6 fc                   INC zpTempLo
- 573 c255 d0 f3                   BNE PrintLoop
- 574 c257 e6 fd                   INC zpTempHi
- 575 c259 4c 4a c2                JMP PrintLoop
- 576                              
- 577 c25c 60           EndStr     RTS 
- 578                   
- 579                              ; --- sequence definitions ---------------------------------
- 580                              
- 581                              ; number of sequences
- 582                              nSequences = 6
- 583                   
- 584                              ; list of sequences, 4 bytes per sequence
- 585 c25d 02 00 7e c2 
- 586 c261 32 00 75 c2 
- 587 c265 01 00 7d c2 
- 588 c269 01 00 7c c2 
- 589 c26d 0e 00 7f c2 
- 590 c271 0e 00 81 c2 
- 591                   
- 592 c275 01 00 00 00  seq1Hz     .byte $01, $00, $00, $00, $00, $00, $00
+ 536                              ; first, we expect to see a low level
+ 537 c220 ad 01 dd     RisingIrq  LDA ciaDataB2
+ 538 c223 0a                      ASL A
+ 539 c224 b0 14                   BCS GiveUp      ; if not, signal problem
+ 540                   
+ 541                              ; now, let's wait for the high level (but not forever)
+ 542 c226 ad 12 d0     RisingLoop LDA vicRaster
+ 543 c229 c9 eb                   CMP #rasterRisingEnd
+ 544 c22b 10 0d                   BPL GiveUp      ; we've been waiting too long; give up
+ 545 c22d 48                      PHA             ; temporarily save the raster line number
+ 546 c22e ad 01 dd                LDA ciaDataB2
+ 547 c231 0a                      ASL A
+ 548 c232 68                      PLA             ; restore the raster line number we read
+ 549 c233 90 f1                   BCC RisingLoop  ; if not high yet, repeat the loop
+ 550                   
+ 551                              ; we just saw a low-to-high transition; remember the raster line
+ 552 c235 85 19                   STA zpRisingRaster     ; we know this is <= rasterRisingEnd
+ 553 c237 4c 06 c2                JMP BarEnd
+ 554                   
+ 555                              ; we did not see a low-to-high transition; signal a problem
+ 556 c23a a9 00        GiveUp     LDA #0
+ 557 c23c 85 19                   STA zpRisingRaster
+ 558 c23e a9 02                   LDA #pokeRed
+ 559 c240 8d 20 d0                STA vicBorder
+ 560 c243 4c 0b c2                JMP SetSample
+ 561                   
+ 562                              ; --- print string (pointer to string is in Y:X) -----------
+ 563                   
+ 564 c246 86 fc        PrintStr   STX zpTempLo
+ 565 c248 84 fd                   STY zpTempHi
+ 566                   
+ 567 c24a a0 00        PrintLoop  LDY #0
+ 568 c24c b1 fc                   LDA (zpTempLo),Y     ; A <- byte at zeropage[zpTempHi]:zeropage[zpTempLo]
+ 569 c24e f0 0c                   BEQ EndStr
+ 570 c250 20 d2 ff                JSR outch
+ 571 c253 e6 fc                   INC zpTempLo
+ 572 c255 d0 f3                   BNE PrintLoop
+ 573 c257 e6 fd                   INC zpTempHi
+ 574 c259 4c 4a c2                JMP PrintLoop
+ 575                              
+ 576 c25c 60           EndStr     RTS 
+ 577                   
+ 578                              ; --- sequence definitions ---------------------------------
+ 579                              
+ 580                              ; number of sequences
+ 581                              nSequences = 6
+ 582                   
+ 583                              ; list of sequences, 4 bytes per sequence
+ 584 c25d 02 00 7e c2 
+ 585 c261 32 00 75 c2 
+ 586 c265 01 00 7d c2 
+ 587 c269 01 00 7c c2 
+ 588 c26d 0e 00 7f c2 
+ 589 c271 0e 00 81 c2 
+ 590                   
+ 591 c275 01 00 00 00  seq1Hz     .byte $01, $00, $00, $00, $00, $00, $00
      c279 00 00 00 
- 593 c27c 01           seqOn      .byte $01
- 594 c27d 00           seqOff     .byte $00
- 595 c27e 01           seqAlt     .byte $01
- 596 c27f 25 02        seqVary0   .byte %00100101, %00000010
- 597 c281 da 3d        seqVary1   .byte %11011010, %00111101
- 598                   
- 599                              ; --- strings ----------------------------------------------
- 600                              
- 601 c283 93 05        Usage      .byte ctrlClear, ctrlWhite
- 602 c285 3d 3d 20 43             .text "== c64 light fantastic == tune & test =="
+ 592 c27c 01           seqOn      .byte $01
+ 593 c27d 00           seqOff     .byte $00
+ 594 c27e 01           seqAlt     .byte $01
+ 595 c27f 25 02        seqVary0   .byte %00100101, %00000010
+ 596 c281 da 3d        seqVary1   .byte %11011010, %00111101
+ 597                   
+ 598                              ; --- strings ----------------------------------------------
+ 599                              
+ 600 c283 93 05        Usage      .byte ctrlClear, ctrlWhite
+ 601 c285 3d 3d 20 43             .text "== c64 light fantastic == tune & test =="
      c289 36 34 20 4c 
      c28d 49 47 48 54 
      c291 20 46 41 4e 
@@ -610,7 +609,7 @@
      c2a1 4e 45 20 26 
      c2a5 20 54 45 53 
      c2a9 54 20 3d 3d 
- 603 c2ad 20 20 20 20             .text "          edwin.steiner@gmx.net, 2024   "
+ 602 c2ad 20 20 20 20             .text "          edwin.steiner@gmx.net, 2024   "
      c2b1 20 20 20 20 
      c2b5 20 20 45 44 
      c2b9 57 49 4e 2e 
@@ -620,160 +619,160 @@
      c2c9 4e 45 54 2c 
      c2cd 20 32 30 32 
      c2d1 34 20 20 20 
- 604 c2d5 0d 9b                   .byte ctrlNewline, ctrlLightGrey
- 605 c2d7 2a 20 50 52             .text "* press "
+ 603 c2d5 0d 9b                   .byte ctrlNewline, ctrlLightGrey
+ 604 c2d7 2a 20 50 52             .text "* press "
      c2db 45 53 53 20 
- 606 c2df 12 1c                   .byte ctrlReverseOn, ctrlRed
- 607 c2e1 52 55 4e 2f             .text "run/stop"
+ 605 c2df 12 1c                   .byte ctrlReverseOn, ctrlRed
+ 606 c2e1 52 55 4e 2f             .text "run/stop"
      c2e5 53 54 4f 50 
- 608 c2e9 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 609 c2eb 20 54 4f 20             .text " to quit."
+ 607 c2e9 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 608 c2eb 20 54 4f 20             .text " to quit."
      c2ef 51 55 49 54 
      c2f3 2e 
- 610 c2f4 0d                      .byte ctrlNewline
- 611 c2f5 0d                      .byte ctrlNewline
- 612 c2f6 2a 20 50 52             .text "* press "
+ 609 c2f4 0d                      .byte ctrlNewline
+ 610 c2f5 0d                      .byte ctrlNewline
+ 611 c2f6 2a 20 50 52             .text "* press "
      c2fa 45 53 53 20 
- 613 c2fe 05                      .byte ctrlWhite
- 614 c2ff 46 35                   .text "f5"
- 615 c301 9b                      .byte ctrlLightGrey
- 616 c302 20 2f 20                .text " / "
- 617 c305 05                      .byte ctrlWhite
- 618 c306 46 37                   .text "f7"
- 619 c308 9b                      .byte ctrlLightGrey
- 620 c309 20 54 4f 20             .text " to cycle through  the   "
+ 612 c2fe 05                      .byte ctrlWhite
+ 613 c2ff 46 35                   .text "f5"
+ 614 c301 9b                      .byte ctrlLightGrey
+ 615 c302 20 2f 20                .text " / "
+ 616 c305 05                      .byte ctrlWhite
+ 617 c306 46 37                   .text "f7"
+ 618 c308 9b                      .byte ctrlLightGrey
+ 619 c309 20 54 4f 20             .text " to cycle through  the   "
      c30d 43 59 43 4c 
      c311 45 20 54 48 
      c315 52 4f 55 47 
      c319 48 20 20 54 
      c31d 48 45 20 20 
      c321 20 
- 621 c322 20 20 54 45             .text "  test sequences."
+ 620 c322 20 20 54 45             .text "  test sequences."
      c326 53 54 20 53 
      c32a 45 51 55 45 
      c32e 4e 43 45 53 
      c332 2e 
- 622 c333 0d                      .byte ctrlNewline
- 623 c334 0d                      .byte ctrlNewline
- 624 c335 20 20                   .text "  "
- 625 c337 9e                      .byte ctrlYellow
- 626 c338 20                      .text " "
- 627 c339 9b                      .byte ctrlLightGrey
- 628 c33a 20 54 55 4e             .text " tuning (alternating on/off)"
+ 621 c333 0d                      .byte ctrlNewline
+ 622 c334 0d                      .byte ctrlNewline
+ 623 c335 20 20                   .text "  "
+ 624 c337 9e                      .byte ctrlYellow
+ 625 c338 20                      .text " "
+ 626 c339 9b                      .byte ctrlLightGrey
+ 627 c33a 20 54 55 4e             .text " tuning (alternating on/off)"
      c33e 49 4e 47 20 
      c342 28 41 4c 54 
      c346 45 52 4e 41 
      c34a 54 49 4e 47 
      c34e 20 4f 4e 2f 
      c352 4f 46 46 29 
- 629 c356 0d                      .byte ctrlNewline
- 630 c357 20 20                   .text "  "
- 631 c359 9f                      .byte ctrlCyan
- 632 c35a 20                      .text " "
- 633 c35b 9b                      .byte ctrlLightGrey
- 634 c35c 20 31 48 5a             .text " 1hz blinking"
+ 628 c356 0d                      .byte ctrlNewline
+ 629 c357 20 20                   .text "  "
+ 630 c359 9f                      .byte ctrlCyan
+ 631 c35a 20                      .text " "
+ 632 c35b 9b                      .byte ctrlLightGrey
+ 633 c35c 20 31 48 5a             .text " 1hz blinking"
      c360 20 42 4c 49 
      c364 4e 4b 49 4e 
      c368 47 
- 635 c369 0d                      .byte ctrlNewline
- 636 c36a 20 20                   .text "  "
- 637 c36c 9f                      .byte ctrlCyan
- 638 c36d 20                      .text " "
- 639 c36e 9b                      .byte ctrlLightGrey
- 640 c36f 20 41 4c 57             .text " always off"
+ 634 c369 0d                      .byte ctrlNewline
+ 635 c36a 20 20                   .text "  "
+ 636 c36c 9f                      .byte ctrlCyan
+ 637 c36d 20                      .text " "
+ 638 c36e 9b                      .byte ctrlLightGrey
+ 639 c36f 20 41 4c 57             .text " always off"
      c373 41 59 53 20 
      c377 4f 46 46 
- 641 c37a 0d                      .byte ctrlNewline
- 642 c37b 20 20                   .text "  "
- 643 c37d 9f                      .byte ctrlCyan
- 644 c37e 20                      .text " "
- 645 c37f 9b                      .byte ctrlLightGrey
- 646 c380 20 41 4c 57             .text " always on"
+ 640 c37a 0d                      .byte ctrlNewline
+ 641 c37b 20 20                   .text "  "
+ 642 c37d 9f                      .byte ctrlCyan
+ 643 c37e 20                      .text " "
+ 644 c37f 9b                      .byte ctrlLightGrey
+ 645 c380 20 41 4c 57             .text " always on"
      c384 41 59 53 20 
      c388 4f 4e 
- 647 c38a 0d                      .byte ctrlNewline
- 648 c38b 20 20                   .text "  "
- 649 c38d 9f                      .byte ctrlCyan
- 650 c38e 20                      .text " "
- 651 c38f 9b                      .byte ctrlLightGrey
- 652 c390 20 56 41 52             .text " varying off time"
+ 646 c38a 0d                      .byte ctrlNewline
+ 647 c38b 20 20                   .text "  "
+ 648 c38d 9f                      .byte ctrlCyan
+ 649 c38e 20                      .text " "
+ 650 c38f 9b                      .byte ctrlLightGrey
+ 651 c390 20 56 41 52             .text " varying off time"
      c394 59 49 4e 47 
      c398 20 4f 46 46 
      c39c 20 54 49 4d 
      c3a0 45 
- 653 c3a1 0d                      .byte ctrlNewline
- 654 c3a2 20 20                   .text "  "
- 655 c3a4 9f                      .byte ctrlCyan
- 656 c3a5 20                      .text " "
- 657 c3a6 9b                      .byte ctrlLightGrey
- 658 c3a7 20 56 41 52             .text " varying on time"
+ 652 c3a1 0d                      .byte ctrlNewline
+ 653 c3a2 20 20                   .text "  "
+ 654 c3a4 9f                      .byte ctrlCyan
+ 655 c3a5 20                      .text " "
+ 656 c3a6 9b                      .byte ctrlLightGrey
+ 657 c3a7 20 56 41 52             .text " varying on time"
      c3ab 59 49 4e 47 
      c3af 20 4f 4e 20 
      c3b3 54 49 4d 45 
- 659 c3b7 0d                      .byte ctrlNewline
- 660 c3b8 0d                      .byte ctrlNewline
- 661 c3b9 0d                      .byte ctrlNewline
- 662 c3ba 0d                      .byte ctrlNewline
- 663 c3bb 0d                      .byte ctrlNewline
- 664 c3bc 0d                      .byte ctrlNewline
- 665 c3bd 57 48 45 4e             .text "when tuning, adjust r6 such"
+ 658 c3b7 0d                      .byte ctrlNewline
+ 659 c3b8 0d                      .byte ctrlNewline
+ 660 c3b9 0d                      .byte ctrlNewline
+ 661 c3ba 0d                      .byte ctrlNewline
+ 662 c3bb 0d                      .byte ctrlNewline
+ 663 c3bc 0d                      .byte ctrlNewline
+ 664 c3bd 57 48 45 4e             .text "when tuning, adjust r6 such"
      c3c1 20 54 55 4e 
      c3c5 49 4e 47 2c 
      c3c9 20 41 44 4a 
      c3cd 55 53 54 20 
      c3d1 52 36 20 53 
      c3d5 55 43 48 
- 666 c3d8 0d                      .byte ctrlNewline
- 667 c3d9 54 48 41 54             .text "that "
+ 665 c3d8 0d                      .byte ctrlNewline
+ 666 c3d9 54 48 41 54             .text "that "
      c3dd 20 
- 668 c3de 12 9e                   .byte ctrlReverseOn, ctrlYellow
- 669 c3e0 59 45 4c 4c             .text "yellow"
+ 667 c3de 12 9e                   .byte ctrlReverseOn, ctrlYellow
+ 668 c3e0 59 45 4c 4c             .text "yellow"
      c3e4 4f 57 
- 670 c3e6 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 671 c3e8 20 41 4e 44             .text " and "
+ 669 c3e6 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 670 c3e8 20 41 4e 44             .text " and "
      c3ec 20 
- 672 c3ed 12 1f                   .byte ctrlReverseOn, ctrlBlue
- 673 c3ef 42 4c 55 45 
- 674 c3f3 92 9b 0d                .byte ctrlReverseOff, ctrlLightGrey, ctrlNewline
- 675 c3f6 42 4f 52 44             .text "borders have the same size."
+ 671 c3ed 12 1f                   .byte ctrlReverseOn, ctrlBlue
+ 672 c3ef 42 4c 55 45 
+ 673 c3f3 92 9b 0d                .byte ctrlReverseOff, ctrlLightGrey, ctrlNewline
+ 674 c3f6 42 4f 52 44             .text "borders have the same size."
      c3fa 45 52 53 20 
      c3fe 48 41 56 45 
      c402 20 54 48 45 
      c406 20 53 41 4d 
      c40a 45 20 53 49 
      c40e 5a 45 2e 
- 676 c411 0d                      .byte ctrlNewline
- 677 c412 4f 4e 4c 59             .text "only "
+ 675 c411 0d                      .byte ctrlNewline
+ 676 c412 4f 4e 4c 59             .text "only "
      c416 20 
- 678 c417 12 1f                   .byte ctrlReverseOn, ctrlBlue
- 679 c419 42 4c 55 45             .text "blue  "
+ 677 c417 12 1f                   .byte ctrlReverseOn, ctrlBlue
+ 678 c419 42 4c 55 45             .text "blue  "
      c41d 20 20 
- 680 c41f 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 681 c421 3a 20 49 4e             .text ": increase r6"
+ 679 c41f 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 680 c421 3a 20 49 4e             .text ": increase r6"
      c425 43 52 45 41 
      c429 53 45 20 52 
      c42d 36 
- 682 c42e 0d                      .byte ctrlNewline
- 683 c42f 4f 4e 4c 59             .text "only "
+ 681 c42e 0d                      .byte ctrlNewline
+ 682 c42f 4f 4e 4c 59             .text "only "
      c433 20 
- 684 c434 12 9e                   .byte ctrlReverseOn, ctrlYellow
- 685 c436 59 45 4c 4c             .text "yellow"
+ 683 c434 12 9e                   .byte ctrlReverseOn, ctrlYellow
+ 684 c436 59 45 4c 4c             .text "yellow"
      c43a 4f 57 
- 686 c43c 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 687 c43e 3a 20 44 45             .text ": decrease r6"
+ 685 c43c 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 686 c43e 3a 20 44 45             .text ": decrease r6"
      c442 43 52 45 41 
      c446 53 45 20 52 
      c44a 36 
- 688 c44b 0d                      .byte ctrlNewline
- 689 c44c 42 4f 52 44             .text "border "
+ 687 c44b 0d                      .byte ctrlNewline
+ 688 c44c 42 4f 52 44             .text "border "
      c450 45 52 20 
- 690 c453 12 1c                   .byte ctrlReverseOn, ctrlRed
- 691 c455 52 45 44                .text "red"
- 692 c458 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
- 693 c45a 3a 20 4e 4f             .text ": no rising edge"
+ 689 c453 12 1c                   .byte ctrlReverseOn, ctrlRed
+ 690 c455 52 45 44                .text "red"
+ 691 c458 92 9b                   .byte ctrlReverseOff, ctrlLightGrey
+ 692 c45a 3a 20 4e 4f             .text ": no rising edge"
      c45e 20 52 49 53 
      c462 49 4e 47 20 
      c466 45 44 47 45 
- 694 c46a 00                      .byte 0
+ 693 c46a 00                      .byte 0
+ 694                   
  695                   
- 696                   
