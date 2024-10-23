@@ -20,21 +20,30 @@
            ; 227. Raster line 71 is about 10 ms before that.
 
            rasterStartVisible = 51
+           rasterEndVisible   = (rasterStartVisible + 200)
 
            rasterSample       = 71    ; when to sample the data line and update the frame
+
            rasterDot          = rasterStartVisible + (8 * ypos)
-           rasterTarget       = (rasterDot + 10)
-           rasterBarStart     = (rasterTarget - 14)
-           rasterBarEnd       = (rasterTarget + 14)
+
+           rasterBarOffset = 0   ; how many raster lines after the low-to-high transition (+ 20 ms) to start looking for high-to-low
+           rasterBarTarget = 8   ; how many raster lines after the low-to-high transition (+ 20 ms) we want the high-to-low transition
+                                 ; Note: 8 raster lines is 512 µs, i.e. about .5 ms
+           rasterBarHeight = 2 * (rasterBarTarget - rasterBarOffset)
+
+           rasterRisingStart  = rasterDot - 10 ; when we start to expect the rising edge
+           rasterRisingEnd    = 255 - (rasterBarHeight + 1) ; we must not overrun the 8-bit range of raster line indices
+
+           rasterRisingToBarEndOffset = rasterBarOffset + rasterBarHeight
 
            ; --- other screen positions ---------------
 
-           yFirstSequence = 9
+           yFirstSequence = 8
            xSequenceMarker = 2
 
            screenposFirstSequenceMarker = screen + (40 * yFirstSequence) + xSequenceMarker
             
-           yData = 16
+           yData = 15
 
            screenposDataStart = screen + (40 * yData)
            screenposDataEnd   = screenposDataStart + (3 * 40)
@@ -97,6 +106,7 @@
            zpMainHi            = $0C ; for use by the main program
            zpSampleLo          = $14 ; running pointer for sampling IRQ
            zpSampleHi          = $15 ; running pointer for sampling IRQ
+           zpRisingRaster      = $19 ; raster line where we saw the low-to-high transition
            zpAvailableBits     = $FB
            zpSequenceIndex     = $FC
            zpTempLo            = $FC ; use only during initialization
@@ -149,9 +159,8 @@ Init       LDA #0
            LDA #$FF
            STA zpExpectedBit    ; no expected bit, yet
 
-           LDA #0               ; start sequence 0
+           LDA #0               ; set sequence index 0
            STA zpSequenceIndex
-           JSR StartSeq
            
            SEI                  ; set interrupt bit, make the CPU ignore interrupt requests
 
@@ -163,14 +172,6 @@ Init       LDA #0
 
            STA ciaIntCtrl1      ; acknowledge pending interrupts from CIA-1
            STA ciaIntCtrl2      ; acknowledge pending interrupts from CIA-2
-
-           LDA #rasterSample    ; set rasterline where interrupt shall occur
-           STA vicRaster
-
-           LDA #<Irq            ; set interrupt vectors, pointing to interrupt service routine below
-           STA vecIrq
-           LDA #>Irq
-           STA vecIrq + 1
 
            LDA #%00000001       ; enable raster interrupt signals from VIC
            STA vicIrqMask
@@ -213,8 +214,23 @@ FirstSeq   LDA #0
 LastSeq    LDA #(nSequences - 1)
            STA zpSequenceIndex
 
-HaveSeq    JSR StartSeq
-           CLI     ; enable interrupts again
+HaveSeq    JSR StartSeq     ; set up the current test sequence
+
+           LDA #pokeBlack
+           STA vicBorder    ; reset border to black in case we left it at any other color
+
+           LDA #0
+           STA zpRisingRaster   ; reset remembered raster line
+
+           ; set up the sample IRQ
+           LDA #rasterSample
+           STA vicRaster
+           LDA #<Irq
+           STA vecIrq
+           LDA #>Irq
+           STA vecIrq + 1
+
+           CLI              ; enable interrupts again
 
            ; --- mark the currently selected sequence
 
@@ -441,31 +457,52 @@ Done       LDA #1
            STA colorpos
 
            ; check whether we are in the tuning sequence
-           ; and wether we are expecting a high-to-low
-           ; transition
            LDA zpSequenceIndex
            BNE AckIrq
+
+           ; we are in the tuning sequence
+           ; check whether we are expecting a high-to-low
+           ; transition
            LDA zpExpectedBit
-           BNE AckIrq
+           BNE LoToHi
 
            ; we are in the tuning sequence and we expect
            ; a high-to-low transition.
+           ; check whether we are remembering the
+           ; raster line of the previous low-to-high transition
+           LDA zpRisingRaster
+           BEQ AckIrq ; no memory; skip tuning
+
            ; set up the tuning-specific raster IRQ handler
 
-           LDA #rasterBarStart
+           CLC
+           ADC #rasterBarOffset
            STA vicRaster
            LDA #<TuneIrq 
            STA vecIrq
            LDA #>TuneIrq
            STA vecIrq + 1
+           JMP AckIrq
+
+           ; we are in the tuning sequence and we expect
+           ; a low-to-high transition
+           ; set up the tuning-specific raster IRQ handler
+LoToHi     LDA #rasterRisingStart
+           STA vicRaster
+           LDA #<RisingIrq 
+           STA vecIrq
+           LDA #>RisingIrq
+           STA vecIrq + 1
 
 AckIrq     ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
            JMP kernalIrq        ; jump into KERNAL's standard interrupt service routine to handle keyboard scan, cursor display etc.
 
-           ; --- raster interrupt for tuning --------------------------
+           ; --- raster interrupt for tuning; captures the high-to-low transition ---
 
 TuneIrq    LDA vicRaster
-           CMP #rasterBarEnd
+           SEC
+           SBC #rasterRisingToBarEndOffset
+           CMP zpRisingRaster
            BPL BarEnd
 
            ; color the border depending on the state of the data line
@@ -479,11 +516,11 @@ DataDone   STA vicBorder
            JMP TuneIrq
 
            ; end of tuning bar; switch back to black border
-           ; and the sampling IRQ
+           ; and back to the sampling IRQ
 BarEnd     LDA #pokeBlack
            STA vicBorder
            
-           ; set up the sample IRQ
+SetSample  ; set up the sample IRQ
            LDA #rasterSample
            STA vicRaster
            LDA #<Irq
@@ -493,6 +530,35 @@ BarEnd     LDA #pokeBlack
 
 AckIrqRet  ASL vicIrqFlag       ; acknowledge the interrupt by clearing the VIC's interrupt flag
            JMP kernalIrqRet     ; jump into KERNAL code for returning from IRQ handler
+
+           ; --- raster interrupt for tuning; captures the low-to-high transition ---
+
+RisingIrq 
+           ; first, we expect to see a low level
+           LDA ciaDataB2
+           ASL A
+           BCS GiveUp      ; if not, signal problem
+
+           ; now, let's wait for the high level (but not forever)
+RisingLoop LDA vicRaster
+           CMP #rasterRisingEnd
+           BPL GiveUp      ; we've been waiting too long; give up
+           PHA             ; temporarily save the raster line number
+           LDA ciaDataB2
+           ASL A
+           PLA             ; restore the raster line number we read
+           BCC RisingLoop  ; if not high yet, repeat the loop
+
+           ; we just saw a low-to-high transition; remember the raster line
+           STA zpRisingRaster     ; we know this is <= rasterRisingEnd
+           JMP BarEnd
+
+           ; we did not see a low-to-high transition; signal a problem
+GiveUp     LDA #0
+           STA zpRisingRaster
+           LDA #pokeRed
+           STA vicBorder
+           JMP SetSample
 
            ; --- print string (pointer to string is in Y:X) -----------
 
@@ -533,9 +599,8 @@ seqVary1   .byte %11011010, %00111101
            ; --- strings ----------------------------------------------
            
 Usage      .byte ctrlClear, ctrlWhite
-           .text "       == c64 light fantastic ==        "
-           .text "          tune & test program           "
-           .byte ctrlNewline
+           .text "== c64 light fantastic == tune & test =="
+           .text "          edwin.steiner@gmx.net, 2024   "
            .byte ctrlNewline, ctrlLightGrey
            .text "* press "
            .byte ctrlReverseOn, ctrlRed
@@ -620,5 +685,11 @@ Usage      .byte ctrlClear, ctrlWhite
            .text "yellow"
            .byte ctrlReverseOff, ctrlLightGrey
            .text ": decrease r6"
+           .byte ctrlNewline
+           .text "border "
+           .byte ctrlReverseOn, ctrlRed
+           .text "red"
+           .byte ctrlReverseOff, ctrlLightGrey
+           .text ": no rising edge"
            .byte 0
 
