@@ -106,6 +106,7 @@
            zpMainHi            = $0C ; for use by the main program
            zpSampleLo          = $14 ; running pointer for sampling IRQ
            zpSampleHi          = $15 ; running pointer for sampling IRQ
+           zpSampleEnable      = $16
            zpRisingRaster      = $19 ; raster line where we saw the low-to-high transition
            zpAvailableBits     = $FB
            zpSequenceIndex     = $FC
@@ -162,6 +163,9 @@ Init       LDA #0
            LDA #0               ; set sequence index 0
            STA zpSequenceIndex
            
+           LDA #1
+           STA zpSampleEnable   ; enable sampling
+
            SEI                  ; set interrupt bit, make the CPU ignore interrupt requests
 
            LDA #%01111111       ; switch off interrupt signals from CIA-1
@@ -184,7 +188,7 @@ MainLoop   JSR readkey
            BEQ MainLoop         ; no key? -> repeat
 
            CMP #keyRunStop      ; has RUN/STOP been pressed?
-           BEQ Exit             ; if yes, then exit
+           BEQ ToggleSmp        ; if yes, then toggle sampling
 
            CMP #keyF5
            BEQ PrevSeq
@@ -192,6 +196,12 @@ MainLoop   JSR readkey
            CMP #keyF7
            BEQ NextSeq
 
+           JMP MainLoop
+
+           ; toggle sampling
+ToggleSmp  LDA #1
+           EOR zpSampleEnable
+           STA zpSampleEnable
            JMP MainLoop
 
            ; switch to prev sequence
@@ -260,8 +270,6 @@ MarkOther  LDY #0
            CPX #nSequences
            BEQ MainLoop
            JMP MarkLoop
-
-Exit       RTS
 
            ; --- start a sequence (sequence index given in zpSequenceIndex)
 
@@ -380,7 +388,10 @@ HaveBit    LDA zpCurrentByte ; shift the LSB out of zpCurrentByte
 
            ; --- raster interrupt, once per frame for sampling and updating the dot ----
            
-Irq        LDA ciaDataB2        ; sample the data line
+Irq        LDA zpSampleEnable   ; is sampling enabled?
+           BEQ Update           ; if not, directly go to updating the dot
+
+           LDA ciaDataB2        ; sample the data line
            ASL A
            LDA #$30             ; '0'
            ADC #0               ; set A to '0' or '1', depending on what we sampled
@@ -444,7 +455,7 @@ NotEnd     LDA #$20             ; ' '
            STA (zpSampleLo),Y
 
            ; update the dot
-           JSR NextBit
+Update     JSR NextBit
            STA zpExpectedBit
            CMP #0
            BEQ ClearIt
@@ -605,7 +616,7 @@ Usage      .byte ctrlClear, ctrlWhite
            .byte ctrlReverseOn, ctrlRed
            .text "run/stop"
            .byte ctrlReverseOff, ctrlLightGrey
-           .text " to quit."
+           .text " to toggle sampling."
            .byte ctrlNewline
            .byte ctrlNewline
            .text "* press "
