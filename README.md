@@ -38,7 +38,7 @@ received on user port input PB7 (line "L") and displays it by coloring a bar in 
 
 - If the bar is fully yellow, the pulse width is above 20.8 ms.
 
-- In between, the border between the blue and yellow areas of the bar indicates the pulse width linearly
+- In between, the border between the yellow and blue areas of the bar indicates the pulse width linearly
 between about 20 ms and 20.8 ms. When the blue and yellow areas have the same size, the pulse width
 is approximately 20.4 ms and the circuit is tuned correctly.
 
