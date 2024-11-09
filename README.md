@@ -1,16 +1,55 @@
-# Reverse engineering of the "Light fantastic" experiment's software
+# Reverse engineering of the "Light fantastic" experiment
 
-Here are my notes for my ongoing reverse-engineering of the C64 programs for the "Light fantastic" experiment.
+Here are my notes from reverse-engineering of the C64 programs for the "Light fantastic" experiment,
+and some software accompanying my YouTube video in which I recreated the experiment.
 
 "Light fantastic" was a broadcasting experiment in the 1985 British TV show "4 Computer Buffs" during which
 programs for home computers were transmitted as part of the TV signal, encoded in a blinking dot on the screen.
+
+My video in which I recreate the experiment is here:
+
+- https://youtu.be/AF6sMBbEZLA
 
 Further information about the experiment and attempts at reproducing it can be found in the following:
 
 - Aug 10, 2024 Retro Recipes video "Receiving A Program From The Past " on YouTube: https://www.youtube.com/watch?v=MezkfYTN6EQ
 - A thread on lemon64: https://www.lemon64.com/forum/viewtopic.php?p=1027686
 
-# Summary
+# TUNETEST program
+
+The TUNETEST program (`tunetest.prg`) is an improved tuning and test program I wrote for this experiment.
+
+The program displays a dot blinking out various test sequences you can select using the function keys F5/F7.
+Simultaneously (actually interleaved with updating the dot), the program samples the user port input PB7
+(line "L") and writes the result ('1' or '0') on the screen. Each bit is colored depending on whether it
+equals the expected value corresponding to the brightness of the dot (green = bit is as expected, red =
+bit differs from expectation).
+
+Note that other than the receiver program, the TUNETEST program does not need to synchronize with the
+serial transmission. It always samples each bit in the middle of its bit period, based on the C64's raster
+interrupt. Therefore, correct sampling results in the TUNETEST program are a necessary but not sufficient
+condition for getting the reception to work with the receiver program.
+
+If the alternating sequence is selected (the dot alternates between bright and dark with each PAL field,
+i.e. it blinks with a frequency of 25 Hz), TUNETEST additionally measures the positive pulse width of the signal
+received on user port input PB7 (line "L") and displays it by coloring a bar in the borders of the screen:
+
+- If the bar is fully blue, the pulse width is below 20 ms.
+
+- If the bar is fully yellow, the pulse width is above 20.8 ms.
+
+- In between, the border between the blue and yellow areas of the bar indicates the pulse width linearly
+between about 20 ms and 20.8 ms. When the blue and yellow areas have the same size, the pulse width
+is approximately 20.4 ms and the circuit is tuned correctly.
+
+- If no rising edge of the signal can be detected, the border turns red.
+
+CAUTION: It is very important to place the sensor precisely and consistently centered on the dot.
+Moving the sensor horizontally or vertically with respect to the dot changes the pulse width, since it
+changes the shape of the brightness signal seen by the receiver circuit! Therefore tuning and reception
+attempts MUST use the same positioning of the sensor relative to the dot to get good results!
+
+# Summary of disassembled programs
 
 I've disassembled the tuning and receiver programs for C64. Strangely, the
 receiver program looks incomplete. Here's how it basically works:
