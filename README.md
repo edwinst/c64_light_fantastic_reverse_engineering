@@ -40,7 +40,8 @@ received on user port input PB7 (line "L") and displays it by coloring a bar in 
 
 - In between, the border between the yellow and blue areas of the bar indicates the pulse width linearly
 between about 20 ms and 20.8 ms. When the blue and yellow areas have the same size, the pulse width
-is approximately 20.4 ms and the circuit is tuned correctly.
+is approximately 20.4 ms and the circuit is tuned correctly. (When in doubt, a slightly longer pulse width
+is better than a slightly too short one. So don't tune below 20.4 ms.)
 
 - If no rising edge of the signal can be detected, the border turns red.
 
@@ -48,6 +49,9 @@ CAUTION: It is very important to place the sensor precisely and consistently cen
 Moving the sensor horizontally or vertically with respect to the dot changes the pulse width, since it
 changes the shape of the brightness signal seen by the receiver circuit! Therefore tuning and reception
 attempts MUST use the same positioning of the sensor relative to the dot to get good results!
+
+The program can only be exited by resetting the C64. (Sorry about that, but cleaning up the state of
+the computer would add quite a lot of code to the program.)
 
 # Summary of disassembled programs
 
@@ -149,6 +153,16 @@ where
 Using a video player with the capability to step through the fields of an interlaced video,
 it should therefore be possible to check whether the expected signal is present.
 
+## UPDATE of expected signal
+
+I found that the actual "4 Computer Buffs" transmission used three stop bits of the values `011`.
+(This may be an unused parity bit that is always 0 plus two stop bits.)
+
+So the expected signal in this transmission is:
+
+
+    ...111 (0) **** **** (0110) 0001 0000 (0110)
+
 # Missing code
 
 In the receiver program, there are JSRs (subroutine calls) to the address $C075.
@@ -196,6 +210,37 @@ The BBC protocol seems to work like this:
 This protocol is meant to read a tokenized BASIC program. Each line starts with a #$0D character,
 followed by two bytes for the line number. If the line number is >= 32768 unsigned ($8000), the receiver stops.
 
+# Preparing the interlaced master tape video for correct playback
+
+The digitized master tapes have very nice picture quality and they have properly interlaced fields, so they provide a PAL field
+every 20 ms, which is critical for the reception to work. However, I could not make the VideoLAN player (VLC media player) to
+play back these interlaced fields correctly on a 50 Hz HDMI output. I therefore resorted to extracting the individual fields and
+then re-encoding them to a progressive 50 Hz video using `ffmpeg`. There is probably a more elegant way to do this without the intermediate step but the following worked for me.
+
+The commands for extracting the fields are:
+
+    mkdir frames
+
+    ffmpeg -i "Four Computer Buffs S01E05 VT32757 © Fremantle.mp4" \
+        -ss 00:04:00 -t 00:05:30 \
+        -filter_complex "[0]field=top[t];[0]field=bottom[b];[t][b]interleave" \
+        -r 50 \
+        frames/field%05d.png
+
+When this has completed, you should have all the fields as individual image files in the "frames" directory.
+
+The command for re-encoding the fields is:
+
+    ffmpeg -framerate 50 -i frames/field%05d.png \
+        -c:v libx264 -pix_fmt yuv420p \
+        transmission.mp4
+
+The resulting video `transmission.mp4` is a 50 Hz progressive video with all the information needed for the reception to work.
+
+Note: These commands were run on a Linux system. For windows, the backslashes for line continuation need to be changed to carets (`^`)
+if you put these commands in a Windows batch file (alternately, just put each command on a single line). I'm not sure whether
+anything about the double quotes needs to be changed for Windows.
+
 # Credits
 
 I learned about this fascinating story through Perifractic's wonderful YouTube recipode (https://www.youtube.com/watch?v=MezkfYTN6EQ).
@@ -203,4 +248,8 @@ I learned about this fascinating story through Perifractic's wonderful YouTube r
 The program `C000_C64REC_nc513.prg` was independently assembled and uploaded to lemon64 by user nc513. See the thread https://www.lemon64.com/forum/viewtopic.php?p=1027686 on Aug 8, 2024.
 
 For disassembling, I used "Infiltrator Disassembler" by Gerald Hinder (https://csdb.dk/release/?id=100129).
+
+For assembling the "TUNETEST" program, I used TMPx v1.1.0 released by style64.org ("Turbo Assembler" originally from Wolfram Roemhild): https://turbo.style64.org/
+
+For making disk images, I used "DirMaster 3.1.5/Style" by The Wiz and Elwix: https://style64.org/dirmaster
 
